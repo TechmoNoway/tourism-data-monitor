@@ -1,0 +1,43 @@
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel
+from enum import Enum
+
+from app.models.comment import Comment
+
+
+class SentimentEnum(str, Enum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+
+class CommentBase(BaseModel):
+    content: str
+    author: Optional[str] = None
+    author_id: Optional[str] = None
+    comment_date: Optional[datetime] = None
+    like_count: Optional[int] = 0
+    reply_count: Optional[int] = 0
+
+class CommentCreate(CommentBase):
+    post_id: int
+    attraction_id: int
+
+class CommentUpdate(BaseModel):
+    content: Optional[str] = None
+    like_count: Optional[int] = None
+    reply_count: Optional[int] = None
+    sentiment_score: Optional[float] = None
+    sentiment_label: Optional[SentimentEnum] = None
+    confidence_score: Optional[float] = None
+    aspects_detected: Optional[str] = None
+    is_bot_suspected: Optional[bool] = None
+    bot_confidence: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+class CommentWithAnalysis(Comment):
+    aspect_breakdown: Optional[dict] = None
+    sentiment_explanation: Optional[str] = None
+
