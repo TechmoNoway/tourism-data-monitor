@@ -8,6 +8,8 @@ python-multipart==0.0.6
 # Database
 sqlalchemy==2.0.0
 alembic==1.12.1
+psycopg2-binary==2.9.7
+asyncpg==0.29.0
 
 # Data processing
 pandas==2.1.0
