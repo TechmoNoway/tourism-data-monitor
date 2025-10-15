@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -7,8 +7,13 @@ Base = declarative_base()
 
 class Comment(Base):
     __tablename__ = "comments"
+    __table_args__ = (
+        UniqueConstraint('platform', 'platform_comment_id', name='uq_platform_comment'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String(50), nullable=False)
+    platform_comment_id = Column(String(200), nullable=False, index=True)
     post_id = Column(Integer, ForeignKey("social_posts.id"))
     attraction_id = Column(Integer, ForeignKey("tourist_attractions.id"))
     content = Column(Text)

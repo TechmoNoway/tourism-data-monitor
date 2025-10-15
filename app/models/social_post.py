@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -8,10 +8,13 @@ Base = declarative_base()
 
 class SocialPost(Base):
     __tablename__ = "social_posts"
+    __table_args__ = (
+        UniqueConstraint('platform', 'platform_post_id', name='uq_platform_post')
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     platform = Column(String(50), nullable=False)
-    post_id = Column(String(200), nullable=False)
+    platform_post_id = Column(String(200), nullable=False, index=True)
     post_url = Column(String(1000))
     title = Column(String(300))
     content = Column(Text)

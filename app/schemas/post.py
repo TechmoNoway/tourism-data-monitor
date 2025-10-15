@@ -11,7 +11,7 @@ class PlatformEnum(str, Enum):
 
 class SocialPostBase(BaseModel):
     platform: PlatformEnum
-    post_id: str
+    platform_post_id: str
     post_url: Optional[str] = None
     title: Optional[str] = None
     content: Optional[str] = None
