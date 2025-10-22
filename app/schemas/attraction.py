@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from pydantic import BaseModel
 
-from app.models.province import Province
+if TYPE_CHECKING:
+    from app.schemas.province import Province
 
 
 class TouristAttractionBase(BaseModel):
@@ -39,10 +40,10 @@ class TouristAttraction(TouristAttractionBase):
         from_attributes = True
 
 class TouristAttractionWithProvince(TouristAttraction):
-    province: Province
+    province: 'Province'
 
 class TouristAttractionWithStats(TouristAttraction):
-    province: Province
+    province: 'Province'
     recent_comments_count: int
     sentiment_breakdown: dict
     activity_score: float

@@ -1,9 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, Text
-from sqlalchemy.ext.declarative import declarative_base
+from app.models.base import Base
 
-
-Base = declarative_base()
 
 class AnalysisLog(Base):
     __tablename__ = "analysis_logs"

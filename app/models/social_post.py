@@ -1,15 +1,12 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-
-
-Base = declarative_base()
+from app.models.base import Base
 
 class SocialPost(Base):
     __tablename__ = "social_posts"
     __table_args__ = (
-        UniqueConstraint('platform', 'platform_post_id', name='uq_platform_post')
+        UniqueConstraint('platform', 'platform_post_id', name='uq_platform_post'),
     )
 
     id = Column(Integer, primary_key=True, index=True)

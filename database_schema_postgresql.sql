@@ -35,23 +35,23 @@ CREATE TABLE tourist_attractions (
 
 -- 3. TABLE: social_posts
 CREATE TABLE social_posts (
-    id              SERIAL PRIMARY KEY,
-    platform        VARCHAR(50) NOT NULL,
-    post_id         VARCHAR(200) NOT NULL,
-    post_url        VARCHAR(1000),
-    title           VARCHAR(300),
-    content         TEXT,
-    author          VARCHAR(200),
-    author_id       VARCHAR(200),
-    attraction_id   INTEGER NOT NULL,
-    view_count      INTEGER DEFAULT 0,
-    like_count      INTEGER DEFAULT 0,
-    comment_count   INTEGER DEFAULT 0,
-    share_count     INTEGER DEFAULT 0,
-    post_date       TIMESTAMP WITH TIME ZONE,
-    scraped_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_updated    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+    id                  SERIAL PRIMARY KEY,
+    platform            VARCHAR(50) NOT NULL,
+    platform_post_id    VARCHAR(200) NOT NULL,
+    post_url            VARCHAR(1000),
+    title               VARCHAR(300),
+    content             TEXT,
+    author              VARCHAR(200),
+    author_id           VARCHAR(200),
+    attraction_id       INTEGER NOT NULL,
+    view_count          INTEGER DEFAULT 0,
+    like_count          INTEGER DEFAULT 0,
+    comment_count       INTEGER DEFAULT 0,
+    share_count         INTEGER DEFAULT 0,
+    post_date           TIMESTAMP WITH TIME ZONE,
+    scraped_at          TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_updated        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
     
     -- Constraints
@@ -64,13 +64,13 @@ CREATE TABLE social_posts (
     ),
     
     -- Unique constraint for platform + post_id
-    UNIQUE(platform, post_id)
+    UNIQUE(platform, platform_post_id)
 );
 
 -- 4. TABLE: comments
 CREATE TABLE comments (
     id                      SERIAL PRIMARY KEY,
-    post_id                 INTEGER NOT NULL,
+    platform_post_id       INTEGER NOT NULL,
     attraction_id           INTEGER NOT NULL,
     content                 TEXT NOT NULL,
     author                  VARCHAR(200),
@@ -87,8 +87,8 @@ CREATE TABLE comments (
     aspects_detected        JSONB,                      -- JSON cho better performance
     is_bot_suspected        BOOLEAN DEFAULT FALSE,
     bot_confidence_score    DECIMAL(4,3) DEFAULT 0.0,
-    
-    FOREIGN KEY (post_id) REFERENCES social_posts(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (platform_post_id) REFERENCES social_posts(id) ON DELETE CASCADE,
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
     
     -- Constraints
@@ -164,7 +164,7 @@ CREATE INDEX idx_posts_date ON social_posts(post_date DESC);
 CREATE INDEX idx_posts_scraped ON social_posts(scraped_at DESC);
 
 -- Indexes for comments table
-CREATE INDEX idx_comments_post ON comments(post_id);
+CREATE INDEX idx_comments_post ON comments(platform_post_id);
 CREATE INDEX idx_comments_attraction ON comments(attraction_id);
 CREATE INDEX idx_comments_author ON comments(author_id);
 CREATE INDEX idx_comments_sentiment ON comments(sentiment_label);

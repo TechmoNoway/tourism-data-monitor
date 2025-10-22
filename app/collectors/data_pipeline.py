@@ -8,7 +8,11 @@ from app.models.tourist_attraction import TouristAttraction
 from app.models.province import Province
 from app.collectors.youtube_collector import create_youtube_collector
 from app.collectors.google_reviews_collector import create_google_reviews_collector
-from app.collectors.facebook_collector import create_facebook_collector
+from app.collectors.facebook_apify_collector import create_facebook_apify_collector
+from app.collectors.facebook_posts_scraper import FacebookPostsScraper
+from app.collectors.tiktok_apify_collector import create_tiktok_apify_collector
+from app.collectors.facebook_rapid_collector import create_facebook_rapid_collector
+from app.collectors.tiktok_rapid_collector import create_tiktok_rapid_collector
 
 
 class DataCollectionPipeline:
@@ -19,15 +23,25 @@ class DataCollectionPipeline:
     def __init__(self, 
                  youtube_api_key: Optional[str] = None,
                  google_maps_api_key: Optional[str] = None,
-                 facebook_access_token: Optional[str] = None,
-                 facebook_app_id: Optional[str] = None,
-                 facebook_app_secret: Optional[str] = None):
+                 apify_api_token: Optional[str] = None,
+                 rapidapi_key: Optional[str] = None,
+                 use_rapidapi: bool = False):
+        """
+        Initialize data collection pipeline
+        
+        Args:
+            youtube_api_key: YouTube Data API v3 key
+            google_maps_api_key: Google Maps/Places API key
+            apify_api_token: Apify API token (for Facebook & TikTok scraping)
+            rapidapi_key: RapidAPI key (alternative to Apify)
+            use_rapidapi: If True, use RapidAPI instead of Apify for FB/TikTok
+        """
         
         self.logger = logging.getLogger("data_collection_pipeline")
         
-        # Initialize collectors
         self.collectors = {}
         
+        # YouTube - uses API (works well)
         if youtube_api_key:
             try:
                 self.collectors['youtube'] = create_youtube_collector(youtube_api_key)
@@ -35,6 +49,7 @@ class DataCollectionPipeline:
             except Exception as e:
                 self.logger.error(f"Failed to initialize YouTube collector: {str(e)}")
         
+        # Google Reviews - uses API (works well)
         if google_maps_api_key:
             try:
                 self.collectors['google_reviews'] = create_google_reviews_collector(google_maps_api_key)
@@ -42,16 +57,41 @@ class DataCollectionPipeline:
             except Exception as e:
                 self.logger.error(f"Failed to initialize Google Reviews collector: {str(e)}")
         
-        if facebook_access_token and facebook_app_id and facebook_app_secret:
+        # Facebook & TikTok - choose between Apify or RapidAPI
+        if use_rapidapi and rapidapi_key:
+            # Use RapidAPI for Facebook & TikTok
             try:
-                self.collectors['facebook'] = create_facebook_collector(
-                    facebook_access_token, 
-                    facebook_app_id, 
-                    facebook_app_secret
-                )
-                self.logger.info("Facebook collector initialized")
+                self.collectors['facebook'] = create_facebook_rapid_collector(rapidapi_key)
+                self.logger.info("Facebook (RapidAPI) collector initialized")
             except Exception as e:
-                self.logger.error(f"Failed to initialize Facebook collector: {str(e)}")
+                self.logger.error(f"Failed to initialize Facebook RapidAPI collector: {str(e)}")
+            
+            try:
+                self.collectors['tiktok'] = create_tiktok_rapid_collector(rapidapi_key)
+                self.logger.info("TikTok (RapidAPI) collector initialized")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize TikTok RapidAPI collector: {str(e)}")
+                
+        elif apify_api_token:
+            # Use Apify for Facebook & TikTok (default)
+            try:
+                # Use FacebookPostsScraper for better post+comment collection
+                facebook_collector = FacebookPostsScraper(apify_api_token)
+                if facebook_collector.authenticate():
+                    self.collectors['facebook'] = facebook_collector
+                    self.logger.info("✓ Facebook Posts Scraper (Apify) initialized - Cost optimized!")
+                else:
+                    self.logger.error("Failed to authenticate Facebook Posts Scraper")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Facebook Apify collector: {str(e)}")
+            
+            try:
+                self.collectors['tiktok'] = create_tiktok_apify_collector(apify_api_token)
+                self.logger.info("TikTok (Apify) collector initialized")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize TikTok Apify collector: {str(e)}")
+        else:
+            self.logger.warning("No Apify or RapidAPI token provided - Facebook & TikTok collectors not available")
     
     async def collect_for_attraction(
         self, 
@@ -79,24 +119,16 @@ class DataCollectionPipeline:
         if not attraction:
             raise ValueError(f"Attraction with ID {attraction_id} not found")
         
-        # Prepare keywords for search
-        keywords = [attraction.name]
-        if attraction.description:
-            # Add location-specific keywords
-            keywords.extend([
-                f"{attraction.name} review",
-                f"{attraction.name} du lịch",
-                f"{attraction.name} {attraction.province.name}"
-            ])
+        attraction_name = attraction.name
+        province_name = attraction.province.name
         
-        # If no platforms specified, use all available
         if platforms is None:
             platforms = list(self.collectors.keys())
         
-        # Collection results
         results = {
             'attraction_id': attraction_id,
-            'attraction_name': attraction.name,
+            'attraction_name': attraction_name,
+            'province_name': province_name,
             'collection_time': datetime.utcnow().isoformat(),
             'platforms': {},
             'total_posts': 0,
@@ -104,7 +136,6 @@ class DataCollectionPipeline:
             'errors': []
         }
         
-        # Collect from each platform
         for platform in platforms:
             if platform not in self.collectors:
                 error_msg = f"Collector for {platform} not available"
@@ -116,8 +147,8 @@ class DataCollectionPipeline:
                 platform_result = await self._collect_from_platform(
                     platform, 
                     attraction_id, 
-                    keywords, 
-                    attraction.province.name,
+                    attraction_name,
+                    province_name,
                     limit_per_platform
                 )
                 
@@ -125,14 +156,13 @@ class DataCollectionPipeline:
                 results['total_posts'] += platform_result['posts_collected']
                 results['total_comments'] += platform_result['comments_collected']
                 
-                self.logger.info(f"Completed collection from {platform} for {attraction.name}")
+                self.logger.info(f"Completed collection from {platform} for {attraction_name}")
                 
             except Exception as e:
                 error_msg = f"Error collecting from {platform}: {str(e)}"
                 self.logger.error(error_msg)
                 results['errors'].append(error_msg)
                 
-                # Log error to database
                 collector = self.collectors[platform]
                 collector.log_collection_activity(
                     attraction_id, 0, 0, "error", error_msg
@@ -140,41 +170,57 @@ class DataCollectionPipeline:
         
         db.close()
         
-        self.logger.info(f"Collection completed for {attraction.name}: {results['total_posts']} posts, {results['total_comments']} comments")
+        self.logger.info(f"Collection completed for {attraction_name}: {results['total_posts']} posts, {results['total_comments']} comments")
         return results
     
     async def _collect_from_platform(
         self, 
         platform: str, 
         attraction_id: int, 
-        keywords: List[str], 
-        location: str,
+        attraction_name: str,
+        province_name: str,
         limit: int
     ) -> Dict[str, Any]:
         """
-        Collect data from a specific platform
+        Collect from a specific platform with relevance filtering
         
         Args:
             platform: Platform name
-            attraction_id: Tourist attraction ID
-            keywords: Search keywords
-            location: Location filter
-            limit: Maximum items to collect
+            attraction_id: Database ID
+            attraction_name: Name of attraction
+            province_name: Name of province
+            limit: Max items to collect
             
         Returns:
-            Collection results for the platform
+            Collection statistics
         """
         collector = self.collectors[platform]
         
-        # Collect posts/places
-        posts = await collector.collect_posts(keywords, location, limit)
+        # Special handling for Facebook with validated best pages
+        if platform == 'facebook' and hasattr(collector, 'collect_posts_with_comments'):
+            return await self._collect_facebook_with_best_pages(
+                collector, attraction_id, attraction_name, province_name, limit
+            )
         
-        # Store posts in database
-        post_ids = collector.process_and_store_posts(posts, attraction_id)
+        # Generate optimized keywords using the collector's method
+        keywords = collector.generate_search_keywords(attraction_name, province_name)
+        
+        self.logger.info(f"Searching {platform} with keywords: {keywords[:3]}...")  # Log first 3 keywords
+        
+        # Collect posts/places from API
+        raw_posts = await collector.collect_posts(keywords, province_name, limit)
+        initial_count = len(raw_posts)
+        
+        # Filter for relevance
+        filtered_posts = collector.filter_relevant_posts(raw_posts, attraction_name, province_name)
+        filtered_count = initial_count - len(filtered_posts)
+        
+        # Store filtered posts in database
+        post_ids = collector.process_and_store_posts(filtered_posts, attraction_id)
         
         # Collect comments for each post
         all_comments = []
-        for i, post in enumerate(posts):
+        for i, post in enumerate(filtered_posts):
             if i >= len(post_ids):  # Skip if post wasn't stored
                 continue
                 
@@ -183,57 +229,156 @@ class DataCollectionPipeline:
             # Get platform-specific post ID
             platform_post_id = None
             if platform == 'youtube':
-                platform_post_id = post['video_id']
+                platform_post_id = post.get('video_id')
             elif platform == 'google_reviews':
-                platform_post_id = post['place_id']
+                platform_post_id = post.get('place_id')
             elif platform == 'facebook':
-                platform_post_id = post['post_id']
+                platform_post_id = post.get('post_id')
+            elif platform == 'tiktok':
+                platform_post_id = post.get('post_id') or post.get('video_id')
             
             if platform_post_id:
                 try:
                     comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
                     
                     if comments:
-                        collector.process_and_store_comments(comments, post_id)
+                        collector.process_and_store_comments(comments, post_id, attraction_id)
                         all_comments.extend(comments)
                         
                 except Exception as e:
                     self.logger.warning(f"Failed to collect comments for post {platform_post_id}: {str(e)}")
         
-        # Log collection activity
+        # Log collection activity with filtering statistics
         collector.log_collection_activity(
             attraction_id, 
             len(post_ids), 
             len(all_comments), 
-            "success"
+            "success",
+            posts_filtered=filtered_count,
+            initial_posts=initial_count
         )
         
         return {
             'platform': platform,
             'posts_collected': len(post_ids),
+            'posts_filtered': filtered_count,
+            'initial_posts': initial_count,
+            'filter_efficiency': f"{(filtered_count/initial_count*100):.1f}%" if initial_count > 0 else "0%",
             'comments_collected': len(all_comments),
-            'keywords_used': keywords,
+            'keywords_used': keywords[:5],  # Only include first 5 keywords in results
             'collection_time': datetime.utcnow().isoformat()
         }
     
+    async def _collect_facebook_with_best_pages(
+        self,
+        collector,
+        attraction_id: int,
+        attraction_name: str,
+        province_name: str,
+        limit: int
+    ) -> Dict[str, Any]:
+        """
+        Collect Facebook data using validated best pages (Smart Page Selection strategy)
+        
+        This method uses high-engagement pages identified through testing rather than
+        keyword search, resulting in better comment collection rates.
+        
+        Returns:
+            Collection statistics with comments included
+        """
+        from app.core.config import settings
+        
+        self.logger.info(f"🎯 Using Facebook Best Pages strategy for {attraction_name}")
+        
+        # Map attraction/province to best page
+        page_url = None
+        location_key = None
+        
+        # Try to match by attraction or province name
+        attraction_lower = attraction_name.lower()
+        province_lower = province_name.lower()
+        
+        if 'bà nà' in attraction_lower or 'ba na' in attraction_lower or 'đà nẵng' in province_lower:
+            location_key = 'ba_na_hills'
+        elif 'đà lạt' in attraction_lower or 'da lat' in attraction_lower or 'lâm đồng' in province_lower:
+            location_key = 'da_lat'
+        elif 'phú quốc' in attraction_lower or 'phu quoc' in attraction_lower or 'kiên giang' in province_lower:
+            location_key = 'phu_quoc'
+        
+        if location_key and location_key in settings.FACEBOOK_BEST_PAGES:
+            page_config = settings.FACEBOOK_BEST_PAGES[location_key]
+            page_url = page_config['url']
+            expected_comments = page_config['expected_comments_per_post']
+            
+            self.logger.info(f"✓ Matched to best page: {page_config['name']} "
+                           f"(~{expected_comments:.1f} comments/post)")
+        else:
+            # Fallback to keyword search if no best page matched
+            self.logger.warning(f"⚠️  No best page for {attraction_name}, falling back to keyword search")
+            keywords = collector.generate_search_keywords(attraction_name, province_name)
+            page_url = keywords[0] if keywords else attraction_name
+        
+        # Collect posts WITH comments using 2-actor strategy
+        posts_with_comments = await collector.collect_posts_with_comments(
+            keywords=page_url,
+            limit=limit,
+            comments_per_post=settings.FACEBOOK_COMMENTS_PER_POST
+        )
+        
+        initial_count = len(posts_with_comments)
+        
+        # Filter for relevance
+        filtered_posts = collector.filter_relevant_posts(posts_with_comments, attraction_name, province_name)
+        filtered_count = initial_count - len(filtered_posts)
+        
+        # Store posts and extract comments
+        post_ids = collector.process_and_store_posts(filtered_posts, attraction_id)
+        
+        # Process and store comments (already collected with posts)
+        all_comments = []
+        for i, post in enumerate(filtered_posts):
+            if i >= len(post_ids):
+                continue
+            
+            post_id = post_ids[i]
+            comments = post.get('comments', [])
+            
+            if comments:
+                collector.process_and_store_comments(comments, post_id, attraction_id)
+                all_comments.extend(comments)
+        
+        # Log activity
+        collector.log_collection_activity(
+            attraction_id,
+            len(post_ids),
+            len(all_comments),
+            "success",
+            posts_filtered=filtered_count,
+            initial_posts=initial_count
+        )
+        
+        self.logger.info(f"✅ Facebook collection completed: {len(post_ids)} posts, "
+                        f"{len(all_comments)} comments ({len(all_comments)/len(post_ids):.1f} avg/post)")
+        
+        return {
+            'platform': 'facebook',
+            'strategy': 'best_pages' if location_key else 'keyword_search',
+            'best_page_used': page_config['name'] if location_key else None,
+            'posts_collected': len(post_ids),
+            'posts_filtered': filtered_count,
+            'initial_posts': initial_count,
+            'filter_efficiency': f"{(filtered_count/initial_count*100):.1f}%" if initial_count > 0 else "0%",
+            'comments_collected': len(all_comments),
+            'avg_comments_per_post': f"{(len(all_comments)/len(post_ids)):.1f}" if post_ids else "0",
+            'collection_time': datetime.utcnow().isoformat()
+        }
+    # Collect data for all attractions in a province
     async def collect_for_province(
         self, 
         province_id: int, 
         platforms: Optional[List[str]] = None,
         limit_per_attraction: int = 20
     ) -> Dict[str, Any]:
-        """
-        Collect data for all attractions in a province
-        
-        Args:
-            province_id: Province ID
-            platforms: List of platforms to collect from
-            limit_per_attraction: Maximum items per attraction per platform
-            
-        Returns:
-            Summary of collection results
-        """
-        # Get attractions in province
         db = next(get_db())
         province = db.query(Province).filter(Province.id == province_id).first()
         
@@ -255,7 +400,6 @@ class DataCollectionPipeline:
             'errors': []
         }
         
-        # Collect for each attraction
         for attraction in attractions:
             try:
                 attraction_result = await self.collect_for_attraction(
@@ -287,17 +431,6 @@ class DataCollectionPipeline:
         platforms: Optional[List[str]] = None,
         limit_per_attraction: int = 10
     ) -> Dict[str, Any]:
-        """
-        Collect data for all provinces
-        
-        Args:
-            platforms: List of platforms to collect from
-            limit_per_attraction: Maximum items per attraction per platform
-            
-        Returns:
-            Summary of collection results
-        """
-        # Get all provinces
         db = next(get_db())
         provinces = db.query(Province).all()
         
@@ -312,7 +445,6 @@ class DataCollectionPipeline:
             'errors': []
         }
         
-        # Collect for each province
         for province in provinces:
             try:
                 province_result = await self.collect_for_province(
@@ -374,18 +506,22 @@ class DataCollectionPipeline:
 # Factory function for easy instantiation
 def create_data_pipeline(**api_credentials) -> DataCollectionPipeline:
     """
-    Create a data collection pipeline with provided API credentials
+    Create DataCollectionPipeline with API credentials
     
     Args:
-        **api_credentials: Dictionary containing API keys and tokens
-        
+        youtube_api_key: YouTube Data API v3 key
+        google_maps_api_key: Google Maps/Places API key
+        apify_api_token: Apify API token (for Facebook & TikTok scraping)
+        rapidapi_key: RapidAPI key (alternative to Apify)
+        use_rapidapi: If True, use RapidAPI instead of Apify (default: False)
+    
     Returns:
-        DataCollectionPipeline instance
+        Configured DataCollectionPipeline instance
     """
     return DataCollectionPipeline(
         youtube_api_key=api_credentials.get('youtube_api_key'),
         google_maps_api_key=api_credentials.get('google_maps_api_key'),
-        facebook_access_token=api_credentials.get('facebook_access_token'),
-        facebook_app_id=api_credentials.get('facebook_app_id'),
-        facebook_app_secret=api_credentials.get('facebook_app_secret')
+        apify_api_token=api_credentials.get('apify_api_token'),
+        rapidapi_key=api_credentials.get('rapidapi_key'),
+        use_rapidapi=api_credentials.get('use_rapidapi', False)
     )

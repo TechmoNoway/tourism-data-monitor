@@ -9,82 +9,116 @@ from app.models.comment import Comment
 from app.models.analysis_log import AnalysisLog
 from app.schemas.post import SocialPostCreate
 from app.schemas.comment import CommentCreate
+from app.collectors.relevance_filter import RelevanceFilter, PlatformKeywordOptimizer
 
 
 class BaseCollector(ABC):
-    """
-    Abstract base class for all social media data collectors
-    """
 
-    def __init__(self, platform_name: str):
+    def __init__(self, platform_name: str, min_relevance_score: float = 0.3):
         self.platform_name = platform_name
         self.logger = logging.getLogger(f"collector.{platform_name}")
+        self.relevance_filter = RelevanceFilter(min_relevance_score=min_relevance_score)
+        self.keyword_optimizer = PlatformKeywordOptimizer()
+        self.min_relevance_score = min_relevance_score
 
     @abstractmethod
     async def collect_posts(
         self, keywords: List[str], location: Optional[str] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Collect posts from the platform
-
-        Args:
-            keywords: List of keywords to search for
-            location: Optional location filter
-            limit: Maximum number of posts to collect
-
-        Returns:
-            List of raw post data
-        """
         pass
 
     @abstractmethod
     async def collect_comments(
         self, platform_post_id: str, limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Collect comments for a specific post
-
-        Args:
-            platform_post_id: Platform-specific post ID
-            limit: Maximum number of comments to collect
-
-        Returns:
-            List of raw comment data
-        """
         pass
 
     @abstractmethod
     def authenticate(self, **credentials) -> bool:
-        """
-        Authenticate with the platform API
-
-        Returns:
-            True if authentication successful, False otherwise
-        """
         pass
+
+    def generate_search_keywords(
+        self, attraction_name: str, province_name: str
+    ) -> List[str]:
+        """
+        Generate optimized search keywords for the attraction.
+        
+        Args:
+            attraction_name: Name of tourist attraction
+            province_name: Name of province
+            
+        Returns:
+            List of search keywords optimized for this platform
+        """
+        keywords = self.relevance_filter.generate_keywords(
+            attraction_name, province_name
+        )
+        
+        # Apply platform-specific optimization
+        if self.platform_name.lower() == 'youtube':
+            keywords = self.keyword_optimizer.optimize_for_youtube(keywords)
+        elif self.platform_name.lower() == 'facebook':
+            keywords = self.keyword_optimizer.optimize_for_facebook(keywords)
+        elif self.platform_name.lower() == 'tiktok':
+            keywords = self.keyword_optimizer.optimize_for_tiktok(keywords)
+        
+        self.logger.info(f"Generated {len(keywords)} keywords for {attraction_name}, {province_name}")
+        return keywords
+
+    def filter_relevant_posts(
+        self, 
+        raw_posts: List[Dict[str, Any]], 
+        attraction_name: str, 
+        province_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter posts to keep only relevant ones.
+        
+        Args:
+            raw_posts: List of raw post data from API
+            attraction_name: Name of tourist attraction
+            province_name: Name of province
+            
+        Returns:
+            Filtered list of relevant posts
+        """
+        if not raw_posts:
+            return []
+        
+        initial_count = len(raw_posts)
+        
+        # Filter by relevance score
+        filtered_posts = self.relevance_filter.filter_posts(
+            raw_posts, attraction_name, province_name
+        )
+        
+        # Filter by date (keep last 90 days by default)
+        filtered_posts = self.relevance_filter.filter_by_date(filtered_posts, days_back=90)
+        
+        # Remove duplicates
+        filtered_posts = self.relevance_filter.remove_duplicates(filtered_posts)
+        
+        final_count = len(filtered_posts)
+        filtered_count = initial_count - final_count
+        
+        self.logger.info(
+            f"Filtered {filtered_count}/{initial_count} posts. "
+            f"Kept {final_count} relevant posts (min_score={self.min_relevance_score})"
+        )
+        
+        return filtered_posts
 
     def process_and_store_posts(
         self, raw_posts: List[Dict[str, Any]], attraction_id: int
     ) -> List[int]:
-        """
-        Process raw post data and store in database
 
-        Args:
-            raw_posts: List of raw post data from platform
-            attraction_id: ID of the tourist attraction
-
-        Returns:
-            List of created post IDs
-        """
         db = next(get_db())
         created_posts = []
 
         try:
             for raw_post in raw_posts:
-                # Convert raw data to Pydantic schema
                 post_data = self._convert_raw_post(raw_post, attraction_id)
 
-                # Check if post already exists
                 existing_post = (
                     db.query(SocialPost)
                     .filter(
@@ -100,10 +134,9 @@ class BaseCollector(ABC):
                     )
                     continue
 
-                # Create new post
-                db_post = SocialPost(**post_data.dict())
+                db_post = SocialPost(**post_data.model_dump())
                 db.add(db_post)
-                db.flush()  # Get the ID without committing
+                db.flush()  
 
                 created_posts.append(db_post.id)
                 self.logger.info(f"Created post {db_post.id} from {self.platform_name}")
@@ -120,27 +153,15 @@ class BaseCollector(ABC):
         return created_posts
 
     def process_and_store_comments(
-        self, raw_comments: List[Dict[str, Any]], post_id: int
+        self, raw_comments: List[Dict[str, Any]], post_id: int, attraction_id: int
     ) -> List[int]:
-        """
-        Process raw comment data and store in database
-
-        Args:
-            raw_comments: List of raw comment data from platform
-            post_id: Database ID of the social post
-
-        Returns:
-            List of created comment IDs
-        """
         db = next(get_db())
         created_comments = []
 
         try:
             for raw_comment in raw_comments:
-                # Convert raw data to Pydantic schema
-                comment_data = self._convert_raw_comment(raw_comment, post_id)
+                comment_data = self._convert_raw_comment(raw_comment, post_id, attraction_id)
 
-                # Check if comment already exists
                 existing_comment = (
                     db.query(Comment)
                     .filter(
@@ -156,7 +177,6 @@ class BaseCollector(ABC):
                     )
                     continue
 
-                # Create new comment
                 db_comment = Comment(**comment_data.dict())
                 db.add(db_comment)
                 db.flush()
@@ -184,43 +204,32 @@ class BaseCollector(ABC):
         comments_collected: int,
         status: str = "success",
         error_message: Optional[str] = None,
+        posts_filtered: int = 0,
+        initial_posts: int = 0,
     ):
-        """
-        Log collection activity to analysis_logs table
-
-        Args:
-            attraction_id: ID of the tourist attraction
-            posts_collected: Number of posts collected
-            comments_collected: Number of comments collected
-            status: Collection status (success/error)
-            error_message: Optional error message if status is error
-        """
+        import json
         db = next(get_db())
 
         try:
             log_entry = AnalysisLog(
                 attraction_id=attraction_id,
-                analysis_type=f"{self.platform_name}_collection",
-                analysis_parameters={
+                total_comments=comments_collected,
+                trending_aspects=json.dumps({
                     "platform": self.platform_name,
                     "posts_collected": posts_collected,
                     "comments_collected": comments_collected,
-                    "collection_time": datetime.utcnow().isoformat(),
-                },
-                results={
-                    "status": status,
-                    "posts_count": posts_collected,
-                    "comments_count": comments_collected,
-                    "error_message": error_message,
-                },
-                created_at=datetime.utcnow(),
+                    "posts_filtered": posts_filtered,
+                    "initial_posts": initial_posts
+                }),
+                activity_score=float(posts_collected)
             )
 
             db.add(log_entry)
             db.commit()
 
             self.logger.info(
-                f"Logged collection activity for attraction {attraction_id}"
+                f"Logged collection activity for attraction {attraction_id}: "
+                f"{posts_collected} posts stored, {posts_filtered} filtered out"
             )
 
         except Exception as e:
@@ -233,32 +242,12 @@ class BaseCollector(ABC):
     def _convert_raw_post(
         self, raw_post: Dict[str, Any], attraction_id: int
     ) -> SocialPostCreate:
-        """
-        Convert platform-specific raw post data to SocialPostCreate schema
-
-        Args:
-            raw_post: Raw post data from platform
-            attraction_id: ID of the tourist attraction
-
-        Returns:
-            SocialPostCreate schema instance
-        """
         pass
 
     @abstractmethod
     def _convert_raw_comment(
-        self, raw_comment: Dict[str, Any], post_id: int
+        self, raw_comment: Dict[str, Any], post_id: int, attraction_id: int
     ) -> CommentCreate:
-        """
-        Convert platform-specific raw comment data to CommentCreate schema
-
-        Args:
-            raw_comment: Raw comment data from platform
-            post_id: Database ID of the social post
-
-        Returns:
-            CommentCreate schema instance
-        """
         pass
 
     def _detect_language(self, text: str) -> str:
@@ -291,22 +280,9 @@ class BaseCollector(ABC):
             return "en"  # Default to English if not Vietnamese
 
     def _clean_text(self, text: str) -> str:
-        """
-        Clean and normalize text content
-
-        Args:
-            text: Raw text content
-
-        Returns:
-            Cleaned text
-        """
         if not text:
             return ""
-
-        # Remove extra whitespaces
+        
         cleaned = " ".join(text.split())
-
-        # Remove or replace special characters if needed
-        # Add more cleaning rules as needed
-
+        
         return cleaned

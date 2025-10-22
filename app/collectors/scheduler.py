@@ -2,7 +2,7 @@
 Background Scheduler for Automated Data Collection
 """
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 import logging
 
@@ -146,7 +146,6 @@ class CollectionScheduler:
         
         try:
             if provinces:
-                # Collect for specific provinces
                 results = {
                     'total_posts': 0,
                     'total_comments': 0,
@@ -171,15 +170,13 @@ class CollectionScheduler:
                     except Exception as e:
                         self.logger.error(f"Error in daily collection for province {province_id}: {str(e)}")
             else:
-                # Collect for all provinces
                 results = await self.pipeline.collect_all_provinces(
                     platforms, 
                     limit_per_attraction=15
                 )
             
-            # Update statistics
             self.stats['successful_runs'] += 1
-            self.stats['last_success'] = datetime.utcnow().isoformat()
+            self.stats['last_success'] = datetime.now(timezone.utc).isoformat()
             self.stats['total_posts_collected'] += results['total_posts']
             self.stats['total_comments_collected'] += results['total_comments']
             
@@ -219,7 +216,6 @@ class CollectionScheduler:
                 except Exception as e:
                     self.logger.error(f"Error in hourly collection for attraction {attraction_id}: {str(e)}")
             
-            # Update statistics
             self.stats['total_posts_collected'] += total_posts
             self.stats['total_comments_collected'] += total_comments
             

@@ -3,8 +3,6 @@ from typing import Optional
 from pydantic import BaseModel
 from enum import Enum
 
-from app.models.comment import Comment
-
 
 class SentimentEnum(str, Enum):
     POSITIVE = "positive"
@@ -18,7 +16,7 @@ class PlatformEnum(str, Enum):
     GOOGLE_REVIEW = "google_review"
 
 class CommentBase(BaseModel):
-    platform: PlatformEnum
+    platform: str
     platform_comment_id: str
     content: str
     author: Optional[str] = None
@@ -42,6 +40,18 @@ class CommentUpdate(BaseModel):
     is_bot_suspected: Optional[bool] = None
     bot_confidence: Optional[float] = None
 
+    class Config:
+        from_attributes = True
+
+class Comment(CommentBase):
+    id: int
+    post_id: int
+    attraction_id: int
+    scraped_at: datetime
+    sentiment_score: Optional[float] = None
+    sentiment_label: Optional[str] = None
+    confidence_score: Optional[float] = None
+    
     class Config:
         from_attributes = True
 

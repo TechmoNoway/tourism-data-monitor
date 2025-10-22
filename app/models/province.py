@@ -1,11 +1,9 @@
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from app.models.base import Base
 
-
-Base = declarative_base()
 
 class Province(Base):
     __tablename__ = "provinces"

@@ -1,8 +1,5 @@
-"""
-Google Places/Reviews Collector for tourist attractions
-"""
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 try:
@@ -16,9 +13,6 @@ from app.schemas.comment import CommentCreate
 
 
 class GoogleReviewsCollector(BaseCollector):
-    """
-    Collector for Google Places reviews of tourist attractions
-    """
     
     def __init__(self, api_key: str):
         super().__init__("google_reviews")
@@ -26,15 +20,8 @@ class GoogleReviewsCollector(BaseCollector):
         self.gmaps_client = None
         
     def authenticate(self, **credentials) -> bool:
-        """
-        Initialize Google Maps client
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             self.gmaps_client = googlemaps.Client(key=self.api_key)
-            # Test the connection
             self.gmaps_client.geocode("Hanoi, Vietnam")
             self.logger.info("Google Maps API authentication successful")
             return True
@@ -48,18 +35,6 @@ class GoogleReviewsCollector(BaseCollector):
         location: Optional[str] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """
-        Search for places and collect basic information
-        Note: Google Places API treats each place as a "post"
-        
-        Args:
-            keywords: List of place names or types to search for
-            location: Location filter (city, province)
-            limit: Maximum number of places to collect
-            
-        Returns:
-            List of place data
-        """
         if not self.gmaps_client:
             raise RuntimeError("Google Maps client not authenticated")
             
@@ -67,12 +42,10 @@ class GoogleReviewsCollector(BaseCollector):
         
         for keyword in keywords:
             try:
-                # Search for places
                 search_query = keyword
                 if location:
                     search_query += f" {location}"
                 
-                # Text search for places
                 places_result = self.gmaps_client.places(
                     query=search_query,
                     type='tourist_attraction',
@@ -83,7 +56,6 @@ class GoogleReviewsCollector(BaseCollector):
                 for place in places_result.get('results', []):
                     place_id = place['place_id']
                     
-                    # Get detailed place information including reviews
                     place_details = self.gmaps_client.place(
                         place_id=place_id,
                         fields=[
@@ -98,7 +70,6 @@ class GoogleReviewsCollector(BaseCollector):
                     if 'result' in place_details:
                         place_info = place_details['result']
                         
-                        # Get photo URL if available
                         photo_url = None
                         if 'photos' in place_info and place_info['photos']:
                             photo_ref = place_info['photos'][0]['photo_reference']
@@ -144,24 +115,12 @@ class GoogleReviewsCollector(BaseCollector):
         place_id: str, 
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Collect reviews for a specific Google Place
-        Note: Google Places API has limited review data
-        
-        Args:
-            place_id: Google Place ID
-            limit: Maximum number of reviews to collect (max 5 from API)
-            
-        Returns:
-            List of review data
-        """
         if not self.gmaps_client:
             raise RuntimeError("Google Maps client not authenticated")
             
         all_reviews = []
         
         try:
-            # Get place details with reviews
             place_details = self.gmaps_client.place(
                 place_id=place_id,
                 fields=['reviews'],
@@ -171,7 +130,7 @@ class GoogleReviewsCollector(BaseCollector):
             if 'result' in place_details and 'reviews' in place_details['result']:
                 reviews = place_details['result']['reviews']
                 
-                for review in reviews[:limit]:  # Google API returns max 5 reviews
+                for review in reviews[:limit]:
                     review_data = {
                         'review_id': f"{place_id}_{review['author_name']}_{review['time']}",
                         'place_id': place_id,
@@ -194,27 +153,21 @@ class GoogleReviewsCollector(BaseCollector):
         return all_reviews
     
     def _convert_raw_post(self, raw_post: Dict[str, Any], attraction_id: int) -> SocialPostCreate:
-        """
-        Convert Google Place data to SocialPostCreate schema
-        Note: Each place is treated as a "post"
-        """
-        # Use current time as posted_at since Google Places doesn't provide creation date
-        posted_at = datetime.utcnow()
+        posted_at = datetime.now(timezone.utc)
         
-        # Create content from place information
-        content_parts = [f"📍 {raw_post['name']}"]
+        content_parts = [f"{raw_post['name']}"]
         
         if raw_post.get('address'):
-            content_parts.append(f"🏠 Địa chỉ: {raw_post['address']}")
+            content_parts.append(f"Địa chỉ: {raw_post['address']}")
             
         if raw_post.get('rating'):
-            content_parts.append(f"⭐ Đánh giá: {raw_post['rating']}/5 ({raw_post.get('reviews_count', 0)} reviews)")
+            content_parts.append(f"Đánh giá: {raw_post['rating']}/5 ({raw_post.get('reviews_count', 0)} reviews)")
             
         if raw_post.get('phone'):
-            content_parts.append(f"📞 {raw_post['phone']}")
+            content_parts.append(f"{raw_post['phone']}")
             
         if raw_post.get('website'):
-            content_parts.append(f"🌐 {raw_post['website']}")
+            content_parts.append(f"{raw_post['website']}")
         
         content = "\n".join(content_parts)
         
@@ -227,10 +180,10 @@ class GoogleReviewsCollector(BaseCollector):
             content=content,
             posted_at=posted_at,
             url=raw_post['url'],
-            likes_count=0,  # Not applicable for places
+            likes_count=0,
             comments_count=raw_post.get('reviews_count', 0),
-            shares_count=0,  # Not applicable
-            views_count=0,  # Not available
+            shares_count=0,
+            views_count=0,
             language=self._detect_language(raw_post['name']),
             metadata={
                 'rating': raw_post.get('rating'),
@@ -245,10 +198,6 @@ class GoogleReviewsCollector(BaseCollector):
         )
     
     def _convert_raw_comment(self, raw_comment: Dict[str, Any], post_id: int) -> CommentCreate:
-        """
-        Convert Google Review data to CommentCreate schema
-        """
-        # Convert Unix timestamp to datetime
         posted_at = datetime.fromtimestamp(raw_comment['time'])
         
         return CommentCreate(
@@ -259,9 +208,9 @@ class GoogleReviewsCollector(BaseCollector):
             author_id=raw_comment['author_name'],  # Google doesn't provide author ID
             content=self._clean_text(raw_comment.get('text', '')),
             posted_at=posted_at,
-            likes_count=0,  # Not available in Google Reviews API
+            likes_count=0,
             language=raw_comment.get('language', 'vi'),
-            parent_comment_id=None,  # Google Reviews don't have nested comments
+            parent_comment_id=None, 
             metadata={
                 'rating': raw_comment['rating'],
                 'author_url': raw_comment.get('author_url', ''),
@@ -272,17 +221,7 @@ class GoogleReviewsCollector(BaseCollector):
         )
 
 
-# Factory function for easy instantiation
 def create_google_reviews_collector(api_key: str) -> GoogleReviewsCollector:
-    """
-    Create and authenticate a Google Reviews collector
-    
-    Args:
-        api_key: Google Maps API key
-        
-    Returns:
-        Authenticated GoogleReviewsCollector instance
-    """
     collector = GoogleReviewsCollector(api_key)
     
     if not collector.authenticate():

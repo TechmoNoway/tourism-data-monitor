@@ -1,10 +1,8 @@
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from app.models.base import Base
 
-
-Base = declarative_base()
 
 class TouristAttraction(Base):
     __tablename__ = "tourist_attractions"

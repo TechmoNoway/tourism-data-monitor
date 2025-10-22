@@ -1,25 +1,25 @@
-from schemas.province import Province, ProvinceCreate, ProvinceUpdate, ProvinceWithStats
-from schemas.attraction import (
+from app.schemas.province import Province, ProvinceCreate, ProvinceUpdate, ProvinceWithStats
+from app.schemas.attraction import (
     TouristAttraction, 
     TouristAttractionCreate, 
     TouristAttractionUpdate,
     TouristAttractionWithProvince,
     TouristAttractionWithStats
 )
-from schemas.comment import (
+from app.schemas.comment import (
     Comment, 
     CommentCreate, 
     CommentUpdate, 
     CommentWithAnalysis,
     SentimentEnum
 )
-from schemas.post import (
+from app.schemas.post import (
     SocialPost, 
     SocialPostCreate, 
     SocialPostUpdate,
     PlatformEnum
 )
-from schemas.analysis import (
+from app.schemas.analysis import (
     AnalysisLog,
     AnalysisLogCreate,
     AttractionAnalytics,
@@ -27,7 +27,7 @@ from schemas.analysis import (
     TrendAnalysis,
     AspectSentiment
 )
-from schemas.common import (
+from app.schemas.common import (
     ApiResponse,
     ErrorResponse, 
     PaginatedResponse,

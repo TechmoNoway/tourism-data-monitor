@@ -1,6 +1,6 @@
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
 
 
@@ -17,7 +17,7 @@ class ErrorResponse(BaseModel):
     details: Optional[str] = None
 
 class PaginatedResponse(BaseModel): 
-    items: List[any]
+    items: List[Any]
     total: int
     page: int
     size: int

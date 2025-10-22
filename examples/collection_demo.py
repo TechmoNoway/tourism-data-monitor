@@ -15,9 +15,7 @@ async def demo_collection():
     api_credentials = {
         'youtube_api_key': 'YOUR_YOUTUBE_API_KEY',
         'google_maps_api_key': 'YOUR_GOOGLE_MAPS_API_KEY',
-        'facebook_access_token': 'YOUR_FACEBOOK_ACCESS_TOKEN',
-        'facebook_app_id': 'YOUR_FACEBOOK_APP_ID',
-        'facebook_app_secret': 'YOUR_FACEBOOK_APP_SECRET'
+        'apify_api_token': 'YOUR_APIFY_API_TOKEN'  # For Facebook & TikTok
     }
     
     # 2. Create data pipeline
