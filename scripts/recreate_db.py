@@ -2,16 +2,15 @@
 Script to recreate database tables
 """
 import sys
-sys.stdout.reconfigure(encoding='utf-8')
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.database.connection import engine
 from app.models.base import Base
-# Import all models to register them
-from app.models.province import Province
-from app.models.tourist_attraction import TouristAttraction
-from app.models.social_post import SocialPost
-from app.models.comment import Comment
-from app.models.analysis_log import AnalysisLog
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 def recreate_tables():
     """Drop all tables and recreate them"""

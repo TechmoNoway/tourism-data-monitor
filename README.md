@@ -77,13 +77,36 @@ Expected output:
 🎉 All credentials are working!
 ```
 
-### 5. Run the Application
+### 5. Initialize Database
 
 ```bash
-# Initialize database
-python -c "from app.database.connection import init_db; init_db()"
+# Create database and seed initial data
+python scripts/recreate_db.py
+```
 
-# Start API server
+### 6. Collect Data
+
+```bash
+# Collect for specific provinces (recommended for testing)
+python scripts/collect_data.py --provinces "Bình Thuận,Đà Nẵng,Lâm Đồng" --limit 3
+
+# Collect for all active attractions
+python scripts/collect_data.py --all
+```
+
+### 7. Verify Data
+
+```bash
+# Check database statistics
+python scripts/check_data.py
+
+# Just verify connection
+python scripts/check_data.py --verify
+```
+
+### 8. Run API Server (Optional)
+
+```bash
 python run.py
 # or
 uvicorn app.main:app --reload
@@ -117,18 +140,32 @@ Visit: http://localhost:8000/docs for API documentation
 tourism_data_monitor/
 ├── app/
 │   ├── api/              # API endpoints
+│   │   ├── routes.py
+│   │   └── endpoints/    # Province, attraction, collection endpoints
 │   ├── collectors/       # Data collection modules
-│   │   ├── facebook_apify_collector.py
-│   │   ├── tiktok_apify_collector.py
-│   │   ├── youtube_collector.py
-│   │   └── google_reviews_collector.py
-│   ├── models/           # Database models
-│   ├── schemas/          # Pydantic schemas
+│   │   ├── base_collector.py           # Base class with dict mapping
+│   │   ├── data_pipeline.py            # Multi-platform orchestrator
+│   │   ├── facebook_apify_collector.py # Facebook via Apify
+│   │   ├── tiktok_apify_collector.py   # TikTok via Apify
+│   │   ├── youtube_collector.py        # YouTube API
+│   │   ├── google_maps_apify_collector.py # Google Maps via Apify
+│   │   ├── relevance_filter.py         # Content filtering
+│   │   └── scheduler.py                # Automated scheduling
+│   ├── models/           # SQLAlchemy ORM models
+│   ├── schemas/          # Pydantic v2 schemas
 │   ├── services/         # Business logic
-│   └── core/             # Configuration
+│   ├── core/             # Configuration
+│   │   ├── config.py                # Main settings
+│   │   └── facebook_best_pages.py   # Facebook pages config
+│   └── database/         # Database connection
+├── scripts/              # Utility scripts
+│   ├── collect_data.py   # Main data collection script
+│   ├── check_data.py     # Database verification
+│   ├── recreate_db.py    # Database setup/reset
+│   └── README.md         # Scripts documentation
 ├── docs/                 # Documentation
 ├── test/                 # Tests
-├── examples/             # Usage examples
+├── run.py               # API server entry point
 └── requirements.txt
 ```
 
@@ -160,28 +197,37 @@ analysis_logs
 
 ## 💻 Usage Examples
 
-### Collect Data for an Attraction
+### Using Command Line Scripts
+
+```bash
+# Collect data for specific provinces
+python scripts/collect_data.py --provinces "Bình Thuận,Đà Nẵng" --limit 5
+
+# Collect for all attractions
+python scripts/collect_data.py --all
+
+# Check database statistics
+python scripts/check_data.py
+
+# Verify connection only
+python scripts/check_data.py --verify
+```
+
+### Using Python API
 
 ```python
-from app.collectors.data_pipeline import DataCollectionPipeline
-from app.core.config import settings
+from app.collectors.data_pipeline import create_data_pipeline
 
 # Initialize pipeline
-pipeline = DataCollectionPipeline(
-    youtube_api_key=settings.YOUTUBE_API_KEY,
-    google_maps_api_key=settings.GOOGLE_MAPS_API_KEY,
-    apify_api_token=settings.APIFY_API_TOKEN
-)
+pipeline = create_data_pipeline()
 
-# Collect from all platforms
-result = await pipeline.collect_for_attraction(
+# Collect from all platforms for an attraction
+await pipeline.collect_for_attraction(
     attraction_id=1,
-    platforms=['youtube', 'google_reviews', 'facebook', 'tiktok'],
-    limit_per_platform=50
+    platform='google_maps',  # or 'facebook', 'youtube', 'tiktok'
+    max_posts=8,
+    max_comments=20
 )
-
-print(f"Collected {result['total_posts']} posts")
-print(f"Collected {result['total_comments']} comments")
 ```
 
 ### API Endpoints
@@ -190,14 +236,14 @@ print(f"Collected {result['total_comments']} comments")
 # List provinces
 GET /api/v1/provinces
 
-# List attractions
+# List attractions by province
 GET /api/v1/attractions?province_id=1
 
-# Collect data for attraction
+# Trigger collection
 POST /api/v1/collection/collect
 {
   "attraction_id": 1,
-  "platforms": ["youtube", "facebook"],
+  "platforms": ["facebook", "google_maps"],
   "limit_per_platform": 50
 }
 
@@ -205,14 +251,18 @@ POST /api/v1/collection/collect
 GET /api/v1/collection/status/{task_id}
 ```
 
-See [examples/collection_usage_example.py](examples/collection_usage_example.py) for more.
-
 ---
 
 ## 🎯 Features
 
 ### ✅ Implemented
-- [x] Multi-platform data collection (4 platforms)
+- [x] Multi-platform data collection (Facebook, Google Maps, TikTok, YouTube)
+- [x] Dict mapping strategy for comment collection on existing posts
+- [x] Automatic duplicate detection (unique constraints)
+- [x] Rate limiting and delay management
+- [x] Platform priority-based collection
+- [x] Target-based stopping (40 comments per attraction)
+- [x] Comprehensive logging and progress reporting
 - [x] Database models with proper relationships
 - [x] Pydantic schemas for validation
 - [x] FastAPI REST API
@@ -220,13 +270,46 @@ See [examples/collection_usage_example.py](examples/collection_usage_example.py)
 - [x] Automated scheduling support
 - [x] Comprehensive documentation
 
-### 🔜 Planned
-- [ ] NLP analysis (sentiment, bot detection)
-- [ ] PhoBERT integration
-- [ ] Web dashboard
+### 🔜 Planned Improvements
+
+**Collector Upgrades:**
+- [ ] Facebook: Direct page URLs only (keyword search blocked)
+- [ ] Google Maps: Increase coverage to 20-30 places
+- [ ] TikTok: Fix comment collection (currently 0 comments)
+- [ ] YouTube: Complete testing and optimization
+- [ ] Add best page fallback strategies
+- [ ] Implement scraping multiple related pages
+
+**Data Quality:**
+- [ ] NLP-based relevance filtering
+- [ ] Sentiment analysis integration
+- [ ] Spam/bot detection
+- [ ] Comment length filtering
+- [ ] Duplicate content detection across platforms
+
+**Analytics:**
+- [ ] PhoBERT integration for Vietnamese NLP
+- [ ] Web dashboard for visualization
 - [ ] Real-time monitoring
-- [ ] Advanced analytics
-- [ ] Report generation
+- [ ] Automated report generation
+- [ ] Trend analysis
+
+---
+
+## 📊 Current Performance
+
+**Latest Collection Results:**
+- **Attractions processed:** 7/9 (2 duplicates in DB)
+- **Total posts:** 54
+- **Total comments:** 374
+- **Average comments/attraction:** 53.4
+- **Target achievement:** 7/7 attractions ≥30 comments ✅
+
+**Platform Performance:**
+- **Google Maps:** Excellent (165 comments from 13 places for one attraction)
+- **Facebook:** Very good (60+ comments with Best Pages strategy)
+- **TikTok:** Posts only (0 comments - needs fixing)
+- **YouTube:** Not yet tested in production
 
 ---
 

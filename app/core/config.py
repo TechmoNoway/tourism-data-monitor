@@ -2,6 +2,12 @@ from typing import ClassVar, Optional
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
+# Import Facebook Best Pages configuration
+try:
+    from app.core.facebook_best_pages import FACEBOOK_BEST_PAGES as FB_BEST_PAGES_FULL
+except ImportError:
+    FB_BEST_PAGES_FULL = {}
+
 
 class Settings(BaseSettings):
     # Application
@@ -10,32 +16,17 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 4242
 
     # Database
-    DATABASE_URL: str = "sqlite:///./tourism.db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/tourism_db"
 
-    # API Credentials - YouTube
+    # API Credentials
     YOUTUBE_API_KEY: Optional[str] = None
-
-    # API Credentials - Google Maps/Places
     GOOGLE_MAPS_API_KEY: Optional[str] = None
-
-    # API Credentials - TikTok
-    TIKTOK_CLIENT_KEY: Optional[str] = None
-    TIKTOK_CLIENT_SECRET: Optional[str] = None
-    TIKTOK_ACCESS_TOKEN: Optional[str] = None
-
-    # API Credentials - Facebook (temporarily disabled)
-    # FACEBOOK_APP_ID: Optional[str] = None
-    # FACEBOOK_APP_SECRET: Optional[str] = None
-    # FACEBOOK_ACCESS_TOKEN: Optional[str] = None
-
-    # Apify (for Facebook & TikTok scraping)
+    
+    # Apify (for Facebook, TikTok, and Google Maps scraping)
     APIFY_API_TOKEN: Optional[str] = None
-
-    # RapidAPI (alternative to Apify for Facebook & TikTok)
-    RAPIDAPI_KEY: Optional[str] = None
 
     # Collection Settings
     DEFAULT_POSTS_LIMIT: int = 50
@@ -49,26 +40,8 @@ class Settings(BaseSettings):
     FACEBOOK_USE_BEST_PAGES: bool = True  # Use validated high-engagement pages
     
     # Facebook Best Pages (from Smart Page Selection validation)
-    FACEBOOK_BEST_PAGES: ClassVar[dict] = {
-        "ba_na_hills": {
-            "name": "Sun World Bà Nà Hills",
-            "url": "https://www.facebook.com/SunWorldBaNaHills",
-            "expected_comments_per_post": 6.1,
-            "validated": "2025-10-21"
-        },
-        "da_lat": {
-            "name": "Hồ Tuyền Lâm",
-            "url": "https://www.facebook.com/TuyenLamLake",
-            "expected_comments_per_post": 11.2,
-            "validated": "2025-10-21"
-        },
-        "phu_quoc": {
-            "name": "Phú Quốc Island",
-            "url": "https://www.facebook.com/PhuQuocIsland",
-            "expected_comments_per_post": 3.7,
-            "validated": "2025-10-21"
-        }
-    }
+    # Full configuration imported from app.core.facebook_best_pages
+    FACEBOOK_BEST_PAGES: ClassVar[dict] = FB_BEST_PAGES_FULL
 
     # Scheduler Settings
     SCHEDULER_ENABLED: bool = False

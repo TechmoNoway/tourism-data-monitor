@@ -14,7 +14,16 @@ from app.collectors.relevance_filter import RelevanceFilter, PlatformKeywordOpti
 
 class BaseCollector(ABC):
 
-    def __init__(self, platform_name: str, min_relevance_score: float = 0.3):
+    def __init__(self, platform_name: str, min_relevance_score: float = 0.0):
+        """
+        Initialize base collector.
+        
+        Args:
+            platform_name: Name of the platform (e.g., 'facebook', 'youtube')
+            min_relevance_score: Minimum relevance score to keep posts (0-1).
+                                 Default 0.0 (disabled) for testing.
+                                 Increase to 0.3+ for production filtering.
+        """
         self.platform_name = platform_name
         self.logger = logging.getLogger(f"collector.{platform_name}")
         self.relevance_filter = RelevanceFilter(min_relevance_score=min_relevance_score)
@@ -110,10 +119,16 @@ class BaseCollector(ABC):
 
     def process_and_store_posts(
         self, raw_posts: List[Dict[str, Any]], attraction_id: int
-    ) -> List[int]:
-
+    ) -> Dict[str, int]:
+        """
+        Process and store posts in database.
+        
+        Returns:
+            Dict mapping platform_post_id to database post ID.
+            Includes BOTH new posts and existing posts, enabling comment collection for all.
+        """
         db = next(get_db())
-        created_posts = []
+        post_id_mapping = {}  # platform_post_id -> db_post_id
 
         try:
             for raw_post in raw_posts:
@@ -129,17 +144,19 @@ class BaseCollector(ABC):
                 )
 
                 if existing_post:
+                    # Include existing post in mapping so we can collect comments for it
+                    post_id_mapping[post_data.platform_post_id] = existing_post.id
                     self.logger.info(
-                        f"Post {post_data.platform_post_id} already exists, skipping"
+                        f"Post {post_data.platform_post_id} already exists (ID={existing_post.id}), will collect comments"
                     )
-                    continue
+                else:
+                    # Create new post
+                    db_post = SocialPost(**post_data.model_dump())
+                    db.add(db_post)
+                    db.flush()  
 
-                db_post = SocialPost(**post_data.model_dump())
-                db.add(db_post)
-                db.flush()  
-
-                created_posts.append(db_post.id)
-                self.logger.info(f"Created post {db_post.id} from {self.platform_name}")
+                    post_id_mapping[post_data.platform_post_id] = db_post.id
+                    self.logger.info(f"Created post {db_post.id} from {self.platform_name}")
 
             db.commit()
 
@@ -150,7 +167,7 @@ class BaseCollector(ABC):
         finally:
             db.close()
 
-        return created_posts
+        return post_id_mapping
 
     def process_and_store_comments(
         self, raw_comments: List[Dict[str, Any]], post_id: int, attraction_id: int

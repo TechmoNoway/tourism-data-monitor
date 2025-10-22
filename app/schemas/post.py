@@ -8,6 +8,7 @@ class PlatformEnum(str, Enum):
     FACEBOOK = "facebook"
     TIKTOK = "tiktok"
     GOOGLE_REVIEW = "google_review"
+    GOOGLE_MAPS = "google_maps"
 
 class SocialPostBase(BaseModel):
     platform: PlatformEnum

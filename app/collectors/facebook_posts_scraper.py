@@ -71,7 +71,7 @@ class FacebookPostsScraper(BaseCollector):
         4. Merge comments back into posts
         
         Args:
-            keywords: Page URLs, hashtags, or search terms
+            keywords: Page URLs, hashtags, or search terms (List[str] or str)
             location: Optional location filter
             limit: Max posts per keyword (default: 20)
             comments_per_post: Max comments per post (default: 50)
@@ -79,6 +79,11 @@ class FacebookPostsScraper(BaseCollector):
         Returns:
             List of posts with comments included in 'comments' field
         """
+        # Defensive: ensure keywords is always a list (fix pipeline string bug)
+        if isinstance(keywords, str):
+            self.logger.debug(f"Converting string keywords to list: {keywords}")
+            keywords = [keywords]
+        
         self.logger.info("🔄 Using 2-actor strategy: Posts + Comments")
         
         # STEP 1: Collect posts (posts only, no comments yet)
@@ -151,7 +156,7 @@ class FacebookPostsScraper(BaseCollector):
         3. Keyword search (fallback)
         
         Args:
-            keywords: Page URLs, hashtags, or search terms
+            keywords: Page URLs, hashtags, or search terms (List[str] or str)
             location: Optional location filter
             limit: Max posts
             
@@ -160,6 +165,11 @@ class FacebookPostsScraper(BaseCollector):
         """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
+        
+        # Defensive: ensure keywords is always a list
+        if isinstance(keywords, str):
+            self.logger.debug(f"Converting string keywords to list: {keywords}")
+            keywords = [keywords]
             
         all_posts = []
         
@@ -316,12 +326,18 @@ class FacebookPostsScraper(BaseCollector):
                 return posts
 
             for i, item in enumerate(items, 1):
-                self.logger.debug(f"Processing item {i}/{len(items)}")
-                self.logger.debug(f"Raw item keys: {list(item.keys())}")
+                self.logger.info(f"📝 Processing item {i}/{len(items)}")
+                self.logger.info(f"🔑 Raw item keys: {list(item.keys())}")
+                if 'postId' in item or 'id' in item:
+                    self.logger.info(f"   Post ID: {item.get('postId') or item.get('id')}")
+                if 'text' in item:
+                    self.logger.info(f"   Text preview: {str(item.get('text'))[:100]}...")
                 post = self._parse_apify_post(item)
                 if post:
+                    self.logger.info(f"✅ Successfully parsed post: {post.get('post_id', 'unknown')}")
                     posts.append(post)
                 else:
+                    self.logger.warning(f"❌ Failed to parse item {i}")
                     # If parser couldn't parse a post, check if this is page metadata
                     if any(k in item for k in ("pageUrl", "pageName", "facebookUrl", "pageId", "facebookId")):
                         # Build a lightweight page metadata record so tests can validate page discovery

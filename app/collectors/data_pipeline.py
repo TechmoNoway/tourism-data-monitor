@@ -13,6 +13,7 @@ from app.collectors.facebook_posts_scraper import FacebookPostsScraper
 from app.collectors.tiktok_apify_collector import create_tiktok_apify_collector
 from app.collectors.facebook_rapid_collector import create_facebook_rapid_collector
 from app.collectors.tiktok_rapid_collector import create_tiktok_rapid_collector
+from app.collectors.google_maps_apify_collector import create_google_maps_apify_collector
 
 
 class DataCollectionPipeline:
@@ -90,6 +91,12 @@ class DataCollectionPipeline:
                 self.logger.info("TikTok (Apify) collector initialized")
             except Exception as e:
                 self.logger.error(f"Failed to initialize TikTok Apify collector: {str(e)}")
+            
+            try:
+                self.collectors['google_maps'] = create_google_maps_apify_collector(apify_api_token)
+                self.logger.info("✓ Google Maps (Apify) collector initialized - High quality reviews!")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Google Maps Apify collector: {str(e)}")
         else:
             self.logger.warning("No Apify or RapidAPI token provided - Facebook & TikTok collectors not available")
     
@@ -215,43 +222,55 @@ class DataCollectionPipeline:
         filtered_posts = collector.filter_relevant_posts(raw_posts, attraction_name, province_name)
         filtered_count = initial_count - len(filtered_posts)
         
-        # Store filtered posts in database
-        post_ids = collector.process_and_store_posts(filtered_posts, attraction_id)
+        # Store filtered posts in database (returns mapping: platform_post_id -> db_post_id)
+        post_id_mapping = collector.process_and_store_posts(filtered_posts, attraction_id)
         
-        # Collect comments for each post
+        # Collect comments for each post (including existing posts!)
         all_comments = []
-        for i, post in enumerate(filtered_posts):
-            if i >= len(post_ids):  # Skip if post wasn't stored
-                continue
-                
-            post_id = post_ids[i]
-            
+        for post in filtered_posts:
             # Get platform-specific post ID
             platform_post_id = None
             if platform == 'youtube':
                 platform_post_id = post.get('video_id')
             elif platform == 'google_reviews':
                 platform_post_id = post.get('place_id')
+            elif platform == 'google_maps':
+                platform_post_id = post.get('post_id')  # Google Maps uses place_id as post_id
             elif platform == 'facebook':
                 platform_post_id = post.get('post_id')
             elif platform == 'tiktok':
                 platform_post_id = post.get('post_id') or post.get('video_id')
             
-            if platform_post_id:
-                try:
-                    comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
+            if not platform_post_id:
+                continue
+            
+            # Get database post ID from mapping
+            db_post_id = post_id_mapping.get(platform_post_id)
+            if not db_post_id:
+                self.logger.warning(f"No database ID found for post {platform_post_id}, skipping comments")
+                continue
+            
+            try:
+                self.logger.info(f"📥 Collecting comments for post {platform_post_id} (DB ID: {db_post_id})")
+                comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
+                
+                if comments:
+                    collector.process_and_store_comments(comments, db_post_id, attraction_id)
+                    all_comments.extend(comments)
+                    self.logger.info(f"   ✅ Stored {len(comments)} comments")
+                else:
+                    self.logger.info(f"   ℹ️  No comments found")
                     
-                    if comments:
-                        collector.process_and_store_comments(comments, post_id, attraction_id)
-                        all_comments.extend(comments)
-                        
-                except Exception as e:
-                    self.logger.warning(f"Failed to collect comments for post {platform_post_id}: {str(e)}")
+            except Exception as e:
+                self.logger.warning(f"Failed to collect comments for post {platform_post_id}: {str(e)}")
+        
+        # Count newly created posts (mapping includes both new and existing)
+        posts_stored = len(post_id_mapping)
         
         # Log collection activity with filtering statistics
         collector.log_collection_activity(
             attraction_id, 
-            len(post_ids), 
+            posts_stored, 
             len(all_comments), 
             "success",
             posts_filtered=filtered_count,
@@ -260,7 +279,7 @@ class DataCollectionPipeline:
         
         return {
             'platform': platform,
-            'posts_collected': len(post_ids),
+            'posts_collected': posts_stored,
             'posts_filtered': filtered_count,
             'initial_posts': initial_count,
             'filter_efficiency': f"{(filtered_count/initial_count*100):.1f}%" if initial_count > 0 else "0%",
@@ -293,6 +312,7 @@ class DataCollectionPipeline:
         # Map attraction/province to best page
         page_url = None
         location_key = None
+        use_direct_page = False
         
         # Try to match by attraction or province name
         attraction_lower = attraction_name.lower()
@@ -309,18 +329,24 @@ class DataCollectionPipeline:
             page_config = settings.FACEBOOK_BEST_PAGES[location_key]
             page_url = page_config['url']
             expected_comments = page_config['expected_comments_per_post']
+            use_direct_page = True
             
             self.logger.info(f"✓ Matched to best page: {page_config['name']} "
                            f"(~{expected_comments:.1f} comments/post)")
+            self.logger.info(f"📍 Using DIRECT page URL: {page_url}")
         else:
             # Fallback to keyword search if no best page matched
             self.logger.warning(f"⚠️  No best page for {attraction_name}, falling back to keyword search")
             keywords = collector.generate_search_keywords(attraction_name, province_name)
             page_url = keywords[0] if keywords else attraction_name
+            self.logger.info(f"🔍 Using KEYWORD search: {page_url}")
+        
+        # CRITICAL: Ensure keywords is always a list (fix string iteration bug)
+        keywords_list = [page_url] if isinstance(page_url, str) else page_url
         
         # Collect posts WITH comments using 2-actor strategy
         posts_with_comments = await collector.collect_posts_with_comments(
-            keywords=page_url,
+            keywords=keywords_list,
             limit=limit,
             comments_per_post=settings.FACEBOOK_COMMENTS_PER_POST
         )
@@ -331,45 +357,56 @@ class DataCollectionPipeline:
         filtered_posts = collector.filter_relevant_posts(posts_with_comments, attraction_name, province_name)
         filtered_count = initial_count - len(filtered_posts)
         
-        # Store posts and extract comments
-        post_ids = collector.process_and_store_posts(filtered_posts, attraction_id)
+        # Store posts and get mapping (returns dict: platform_post_id -> db_post_id)
+        post_id_mapping = collector.process_and_store_posts(filtered_posts, attraction_id)
         
         # Process and store comments (already collected with posts)
         all_comments = []
-        for i, post in enumerate(filtered_posts):
-            if i >= len(post_ids):
+        for post in filtered_posts:
+            # Get platform post ID
+            platform_post_id = post.get('post_id')
+            if not platform_post_id:
                 continue
             
-            post_id = post_ids[i]
+            # Get database post ID from mapping
+            db_post_id = post_id_mapping.get(platform_post_id)
+            if not db_post_id:
+                continue
+            
             comments = post.get('comments', [])
             
             if comments:
-                collector.process_and_store_comments(comments, post_id, attraction_id)
+                collector.process_and_store_comments(comments, db_post_id, attraction_id)
                 all_comments.extend(comments)
         
         # Log activity
+        posts_stored = len(post_id_mapping)
         collector.log_collection_activity(
             attraction_id,
-            len(post_ids),
+            posts_stored,
             len(all_comments),
             "success",
             posts_filtered=filtered_count,
             initial_posts=initial_count
         )
         
-        self.logger.info(f"✅ Facebook collection completed: {len(post_ids)} posts, "
-                        f"{len(all_comments)} comments ({len(all_comments)/len(post_ids):.1f} avg/post)")
+        # Safe division for average calculation (fix division-by-zero)
+        avg_comments = (len(all_comments) / posts_stored) if posts_stored > 0 else 0.0
+        
+        self.logger.info(f"✅ Facebook collection completed: {posts_stored} posts, "
+                        f"{len(all_comments)} comments ({avg_comments:.1f} avg/post)")
         
         return {
             'platform': 'facebook',
-            'strategy': 'best_pages' if location_key else 'keyword_search',
+            'strategy': 'best_pages' if use_direct_page else 'keyword_search',
             'best_page_used': page_config['name'] if location_key else None,
-            'posts_collected': len(post_ids),
+            'page_url_used': page_url if use_direct_page else None,
+            'posts_collected': posts_stored,
             'posts_filtered': filtered_count,
             'initial_posts': initial_count,
             'filter_efficiency': f"{(filtered_count/initial_count*100):.1f}%" if initial_count > 0 else "0%",
             'comments_collected': len(all_comments),
-            'avg_comments_per_post': f"{(len(all_comments)/len(post_ids)):.1f}" if post_ids else "0",
+            'avg_comments_per_post': f"{avg_comments:.1f}",
             'collection_time': datetime.utcnow().isoformat()
         }
     # Collect data for all attractions in a province
