@@ -122,6 +122,31 @@ def check_database_stats():
             print(f"    Negative: {avg_negative_score:.3f}")
         if avg_neutral_score:
             print(f"    Neutral:  {avg_neutral_score:.3f}")
+        
+        # Topic classification statistics
+        comments_with_topics = db.query(Comment).filter(Comment.topics.isnot(None)).count()
+        
+        if comments_with_topics > 0:
+            print(f"\nTOPIC CLASSIFICATION:")
+            print(f"  Comments with topics: {comments_with_topics}/{analyzed_comments} ({comments_with_topics/analyzed_comments*100:.1f}%)")
+            
+            # Count topics (JSONB array contains)
+            all_topics = {}
+            comments_with_topics_data = db.query(Comment).filter(Comment.topics.isnot(None)).all()
+            
+            for comment in comments_with_topics_data:
+                if comment.topics:
+                    for topic in comment.topics:
+                        all_topics[topic] = all_topics.get(topic, 0) + 1
+            
+            print("\n  Topic Distribution:")
+            for topic, count in sorted(all_topics.items(), key=lambda x: x[1], reverse=True):
+                percentage = count / comments_with_topics * 100
+                bar = "▓" * int(percentage / 3)
+                print(f"    {topic:15s}: {count:4d} ({percentage:5.1f}%) {bar}")
+            
+            print(f"\n  Total topic mentions: {sum(all_topics.values())}")
+            print(f"  Avg topics per comment: {sum(all_topics.values())/comments_with_topics:.1f}")
     else:
         print("  No sentiment analysis performed yet")
         print("  Run: python scripts/analyze_sentiment.py")

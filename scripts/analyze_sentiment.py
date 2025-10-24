@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.models.comment import Comment
 from app.services.sentiment_analyzer import MultilingualSentimentAnalyzer
+from app.services.topic_classifier import TopicClassifier
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,11 +53,12 @@ def analyze_comments(
         
         print(f"Found {total} comments to analyze")
         
-        print("\nInitializing sentiment analyzer...")
+        print("\n🔧 Initializing analyzers...")
         print(f"   • GPU: {'Enabled' if use_gpu else 'Disabled (CPU mode)'}")
         print(f"   • Batch size: {batch_size}")
         
         analyzer = MultilingualSentimentAnalyzer(use_gpu=use_gpu)
+        topic_classifier = TopicClassifier()
         
         print("\nStarting analysis...\n")
         
@@ -64,6 +66,7 @@ def analyze_comments(
         language_stats = {}
         sentiment_stats = {'positive': 0, 'neutral': 0, 'negative': 0}
         model_stats = {}
+        topic_stats = {}
         
         for i in range(0, total, batch_size):
             batch = comments[i:i + batch_size]
@@ -80,6 +83,24 @@ def analyze_comments(
                 comment.analysis_model = result['analysis_model']
                 comment.analyzed_at = datetime.now()
                 comment.is_valid = result['word_count'] >= 3  # Minimum 3 words
+                
+                # Topic classification
+                topics = topic_classifier.classify_topics(comment.content, comment.language)
+                comment.topics = topics if topics else None
+                
+                # Aspect-level sentiments
+                if topics:
+                    aspect_sentiments = topic_classifier.get_aspect_sentiments(
+                        comment.content,
+                        topics,
+                        comment.sentiment,
+                        comment.language
+                    )
+                    comment.aspect_sentiments = aspect_sentiments
+                    
+                    # Update topic stats
+                    for topic in topics:
+                        topic_stats[topic] = topic_stats.get(topic, 0) + 1
                 
                 # Update stats
                 language_stats[result['language']] = language_stats.get(result['language'], 0) + 1
@@ -116,6 +137,16 @@ def analyze_comments(
         for model, count in sorted(model_stats.items(), key=lambda x: x[1], reverse=True):
             percentage = count / analyzed_count * 100
             print(f"   • {model:15s}: {count:4d} ({percentage:5.1f}%)")
+        
+        # Topic classification statistics
+        if topic_stats:
+            print("\nTopic Classification:")
+            total_topics = sum(topic_stats.values())
+            for topic, count in sorted(topic_stats.items(), key=lambda x: x[1], reverse=True):
+                percentage = count / analyzed_count * 100
+                bar = "▓" * int(percentage / 3)
+                print(f"   • {topic:15s}: {count:4d} ({percentage:5.1f}%) {bar}")
+            print(f"   Total topic mentions: {total_topics}")
         
         # Top positive and negative examples
         print("\nSample Results:")
