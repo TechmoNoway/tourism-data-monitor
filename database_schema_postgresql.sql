@@ -70,7 +70,9 @@ CREATE TABLE social_posts (
 -- 4. TABLE: comments
 CREATE TABLE comments (
     id                      SERIAL PRIMARY KEY,
-    platform_post_id       INTEGER NOT NULL,
+    platform                VARCHAR(50) NOT NULL,
+    platform_comment_id     VARCHAR(200) NOT NULL,
+    post_id                 INTEGER,
     attraction_id           INTEGER NOT NULL,
     content                 TEXT NOT NULL,
     author                  VARCHAR(200),
@@ -80,33 +82,48 @@ CREATE TABLE comments (
     comment_date            TIMESTAMP WITH TIME ZONE,
     scraped_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
-    -- result AI/NLP
-    sentiment_score         DECIMAL(4,3),               -- -1.000 đến 1.000
-    sentiment_label         VARCHAR(20),
-    confidence_score        DECIMAL(4,3),               -- 0.000 đến 1.000
-    aspects_detected        JSONB,                      -- JSON cho better performance
-    is_bot_suspected        BOOLEAN DEFAULT FALSE,
-    bot_confidence_score    DECIMAL(4,3) DEFAULT 0.0,
+    -- Data cleaning fields
+    cleaned_content         TEXT,                                   -- Content after preprocessing
+    is_valid                BOOLEAN DEFAULT TRUE,                   -- Quality filter result
+    language                VARCHAR(10),                            -- 'vi', 'en', 'zh-cn', 'ko', 'ja', 'th', 'unknown'
+    word_count              INTEGER,                                -- Word count in comment
+    
+    -- Sentiment analysis fields (Multi-language support: PhoBERT + XLM-RoBERTa)
+    sentiment               VARCHAR(20),                            -- 'positive', 'neutral', 'negative'
+    sentiment_score         DECIMAL(4,3),                          -- Confidence score 0.000 to 1.000
+    analysis_model          VARCHAR(50),                            -- 'phobert', 'xlm-roberta', 'rule-based'
+    analyzed_at             TIMESTAMP WITH TIME ZONE,              -- Analysis timestamp
+    
+    -- Topic classification fields
+    topics                  JSONB,                                  -- ['scenery', 'food', 'service', 'pricing', 'accessibility']
+    aspect_sentiments       JSONB,                                  -- {'scenery': 'positive', 'food': 'neutral'}
+    
+    -- Spam/quality detection fields
+    is_spam                 BOOLEAN DEFAULT FALSE,                  -- Spam/bot detection result
+    spam_score              DECIMAL(4,3),                          -- Spam confidence 0.000 to 1.000
 
-    FOREIGN KEY (platform_post_id) REFERENCES social_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES social_posts(id) ON DELETE CASCADE,
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
     
     -- Constraints
-    CONSTRAINT sentiment_label_values CHECK (
-        sentiment_label IN ('positive', 'negative', 'neutral') OR sentiment_label IS NULL
+    CONSTRAINT sentiment_values CHECK (
+        sentiment IN ('positive', 'negative', 'neutral') OR sentiment IS NULL
     ),
     CONSTRAINT sentiment_score_range CHECK (
-        sentiment_score >= -1.0 AND sentiment_score <= 1.0 OR sentiment_score IS NULL
+        sentiment_score >= 0.0 AND sentiment_score <= 1.0 OR sentiment_score IS NULL
     ),
-    CONSTRAINT confidence_score_range CHECK (
-        confidence_score >= 0.0 AND confidence_score <= 1.0 OR confidence_score IS NULL
-    ),
-    CONSTRAINT bot_confidence_range CHECK (
-        bot_confidence_score >= 0.0 AND bot_confidence_score <= 1.0
+    CONSTRAINT spam_score_range CHECK (
+        spam_score >= 0.0 AND spam_score <= 1.0 OR spam_score IS NULL
     ),
     CONSTRAINT positive_engagement CHECK (
         like_count >= 0 AND reply_count >= 0
-    )
+    ),
+    CONSTRAINT word_count_positive CHECK (
+        word_count >= 0 OR word_count IS NULL
+    ),
+    
+    -- Unique constraint for platform + comment_id
+    UNIQUE(platform, platform_comment_id)
 );
 
 -- 5. TABLE: analysis_logs
@@ -164,15 +181,24 @@ CREATE INDEX idx_posts_date ON social_posts(post_date DESC);
 CREATE INDEX idx_posts_scraped ON social_posts(scraped_at DESC);
 
 -- Indexes for comments table
-CREATE INDEX idx_comments_post ON comments(platform_post_id);
+CREATE INDEX idx_comments_post ON comments(post_id);
 CREATE INDEX idx_comments_attraction ON comments(attraction_id);
 CREATE INDEX idx_comments_author ON comments(author_id);
-CREATE INDEX idx_comments_sentiment ON comments(sentiment_label);
-CREATE INDEX idx_comments_bot ON comments(is_bot_suspected);
+CREATE INDEX idx_comments_platform ON comments(platform);
 CREATE INDEX idx_comments_date ON comments(comment_date DESC);
 CREATE INDEX idx_comments_scraped ON comments(scraped_at DESC);
+
+-- Indexes for sentiment analysis
+CREATE INDEX idx_comments_sentiment ON comments(sentiment);
+CREATE INDEX idx_comments_language ON comments(language);
+CREATE INDEX idx_comments_analyzed ON comments(analyzed_at DESC);
 CREATE INDEX idx_comments_sentiment_score ON comments(sentiment_score DESC);
-CREATE INDEX idx_comments_aspects ON comments USING GIN (aspects_detected);
+CREATE INDEX idx_comments_valid ON comments(is_valid);
+CREATE INDEX idx_comments_spam ON comments(is_spam);
+
+-- GIN indexes for JSONB fields
+CREATE INDEX idx_comments_topics ON comments USING GIN (topics);
+CREATE INDEX idx_comments_aspects ON comments USING GIN (aspect_sentiments);
 
 -- Indexes for analysis_logs table
 CREATE INDEX idx_analysis_attraction ON analysis_logs(attraction_id);

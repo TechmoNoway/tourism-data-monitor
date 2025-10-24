@@ -18,7 +18,7 @@ This system collects and analyzes comments, posts, and reviews about tourist att
 
 ### 1. Prerequisites
 - Python 3.9+
-- PostgreSQL or SQLite
+- PostgreSQL
 - API keys (see setup below)
 
 ### 2. Installation
@@ -71,8 +71,6 @@ Expected output:
 ✅ YouTube                WORKING
 ✅ Google Maps            WORKING
 ✅ Apify (FB/TikTok)      WORKING
-⚠️  Facebook API          DISABLED (using Apify)
-⚠️  TikTok API            DISABLED (using Apify)
 
 🎉 All credentials are working!
 ```
@@ -310,20 +308,6 @@ GET /api/v1/collection/status/{task_id}
 - **Facebook:** Very good (60+ comments with Best Pages strategy)
 - **TikTok:** Posts only (0 comments - needs fixing)
 - **YouTube:** Not yet tested in production
-
----
-
-## 💰 Cost Estimate
-
-### Free Tier (Good for testing)
-- YouTube: 10,000 quota units/day (free)
-- Google Maps: $200 credit/month
-- Apify: $5 free credit
-
-### Monthly Production Costs
-- **Small** (3 provinces, weekly): ~$10-15/month
-- **Medium** (3 provinces, daily): ~$25-30/month
-- **Large** (10 provinces, daily): ~$80-100/month
 
 ---
 

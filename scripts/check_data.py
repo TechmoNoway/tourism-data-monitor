@@ -1,11 +1,7 @@
-"""
-Utility script to check and verify data in the database.
-Combines functionality from check_all_data.py and verify_db.py
-"""
+
 import sys
 from pathlib import Path
 
-# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.database.connection import get_db
@@ -17,7 +13,6 @@ from sqlalchemy import func
 
 
 def check_database_stats():
-    """Display comprehensive database statistics"""
     db = next(get_db())
     
     print("\n" + "="*70)
@@ -79,13 +74,64 @@ def check_database_stats():
     print(f"  Comments per attraction: {avg_comments_per_attraction:.1f}")
     print(f"  Comments per post: {avg_comments_per_post:.1f}")
     
+    print("\nSENTIMENT ANALYSIS:")
+    analyzed_comments = db.query(Comment).filter(Comment.sentiment.isnot(None)).count()
+    
+    if analyzed_comments > 0:
+        print(f"  Analyzed: {analyzed_comments}/{total_comments} comments ({analyzed_comments/total_comments*100:.1f}%)")
+        
+        sentiments = db.query(
+            Comment.sentiment,
+            func.count(Comment.id).label('count')
+        ).filter(Comment.sentiment.isnot(None)).group_by(Comment.sentiment).all()
+        
+        print("\n  Sentiment Distribution:")
+        for sentiment, count in sentiments:
+            percentage = count / analyzed_comments * 100
+            bar = "█" * int(percentage / 2)
+            print(f"    {sentiment:8s}: {count:4d} ({percentage:5.1f}%) {bar}")
+        
+        languages = db.query(
+            Comment.language,
+            func.count(Comment.id).label('count')
+        ).filter(Comment.language.isnot(None)).group_by(Comment.language).order_by(func.count(Comment.id).desc()).all()
+        
+        print("\n  Language Distribution (Top 10):")
+        for lang, count in languages[:10]:
+            percentage = count / analyzed_comments * 100
+            print(f"    {lang:8s}: {count:4d} ({percentage:5.1f}%)")
+        
+        models = db.query(
+            Comment.analysis_model,
+            func.count(Comment.id).label('count')
+        ).filter(Comment.analysis_model.isnot(None)).group_by(Comment.analysis_model).all()
+        
+        print("\n  Models Used:")
+        for model, count in models:
+            percentage = count / analyzed_comments * 100
+            print(f"    {model:15s}: {count:4d} ({percentage:5.1f}%)")
+        
+        avg_positive_score = db.query(func.avg(Comment.sentiment_score)).filter(Comment.sentiment == 'positive').scalar()
+        avg_negative_score = db.query(func.avg(Comment.sentiment_score)).filter(Comment.sentiment == 'negative').scalar()
+        avg_neutral_score = db.query(func.avg(Comment.sentiment_score)).filter(Comment.sentiment == 'neutral').scalar()
+        
+        print("\n  Average Confidence Scores:")
+        if avg_positive_score:
+            print(f"    Positive: {avg_positive_score:.3f}")
+        if avg_negative_score:
+            print(f"    Negative: {avg_negative_score:.3f}")
+        if avg_neutral_score:
+            print(f"    Neutral:  {avg_neutral_score:.3f}")
+    else:
+        print("  No sentiment analysis performed yet")
+        print("  Run: python scripts/analyze_sentiment.py")
+    
     print("\n" + "="*70 + "\n")
     
     db.close()
 
 
 def verify_database_connection():
-    """Verify database connection and structure"""
     try:
         db = next(get_db())
         

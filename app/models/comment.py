@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
@@ -22,13 +23,25 @@ class Comment(Base):
     comment_date = Column(DateTime)
     scraped_at = Column(DateTime, default=datetime.now(timezone.utc))
 
-    # analysis results
+    # Data cleaning fields
+    cleaned_content = Column(Text)
+    is_valid = Column(Boolean, default=True)
+    language = Column(String(10))  # 'vi', 'en', 'zh-cn', 'ko', 'ja', 'th', 'unknown'
+    word_count = Column(Integer)
+    
+    # Sentiment analysis fields
+    sentiment = Column(String(20))  # 'positive', 'neutral', 'negative'
     sentiment_score = Column(Float)
-    sentiment_label = Column(String(20))
-    confidence_score = Column(Float)
-    aspects_detected = Column(Text) # JSON string
-    is_bot_suspected = Column(Boolean, default=False)
-    bot_confidence_score = Column(Float)
+    analysis_model = Column(String(50))  # 'phobert', 'xlm-roberta', 'rule-based'
+    analyzed_at = Column(DateTime)
+    
+    # Topic classification fields
+    topics = Column(JSONB)  # ['scenery', 'food', 'service', 'pricing', 'accessibility']
+    aspect_sentiments = Column(JSONB)  # {'scenery': 'positive', 'food': 'neutral', 'service': 'negative'}
+    
+    # Quality/spam detection fields
+    is_spam = Column(Boolean, default=False)  # Detected as spam/bot
+    spam_score = Column(Float)
 
     post = relationship("SocialPost", back_populates="comments")
     attraction = relationship("TouristAttraction", back_populates="comments")

@@ -1,18 +1,8 @@
-"""
-Main data collection script for tourism data monitoring.
-Collects posts and comments from multiple platforms (Facebook, Google Maps, TikTok, YouTube)
-for tourist attractions across configured provinces.
-
-Usage:
-    python scripts/collect_data.py --provinces "Bình Thuận,Đà Nẵng,Lâm Đồng" --limit 3
-    python scripts/collect_data.py --all  # Collect for all active attractions
-"""
 import asyncio
 import sys
 from pathlib import Path
 from typing import List
 
-# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.database.connection import get_db
@@ -28,7 +18,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Configuration
 TARGET_POSTS_PER_ATTRACTION = 8
 TARGET_COMMENTS_PER_ATTRACTION = 40
 PLATFORMS_PRIORITY = ['facebook', 'google_maps', 'youtube', 'tiktok']
@@ -40,13 +29,8 @@ async def collect_for_attraction_multi_platform(
     attraction_name: str,
     province_name: str
 ) -> dict:
-    """
-    Collect data from multiple platforms for a single attraction.
-    Tries platforms in priority order until target is reached.
-    """
     db = next(get_db())
     
-    # Check existing data
     existing_posts = db.query(SocialPost).filter(
         SocialPost.attraction_id == attraction_id
     ).count()
@@ -62,7 +46,6 @@ async def collect_for_attraction_multi_platform(
     print("="*70)
     print()
     
-    # Check if target already reached
     if existing_comments >= TARGET_COMMENTS_PER_ATTRACTION:
         print(f"\nTarget reached! Total comments: {existing_comments}/{TARGET_COMMENTS_PER_ATTRACTION}\n")
         return {
@@ -104,14 +87,12 @@ async def collect_for_attraction_multi_platform(
             print(f"Got {current_comments} comments, stopping here!")
             break
         
-        # Stop if we have 80% of target (diminishing returns)
         if current_comments >= TARGET_COMMENTS_PER_ATTRACTION * 0.8:
             print(f"Got {current_comments} comments (80% of target), stopping here!")
             break
         
         print(f"\nTrying {platform.upper()}: Need {comments_needed} more comments...")
         
-        # Collect from platform
         try:
             await pipeline.collect_for_attraction(
                 attraction_id=attraction_id,
@@ -120,7 +101,6 @@ async def collect_for_attraction_multi_platform(
                 max_comments=20
             )
             
-            # Check what we got
             new_posts = db.query(SocialPost).filter(
                 SocialPost.attraction_id == attraction_id
             ).count() - current_posts
@@ -140,7 +120,6 @@ async def collect_for_attraction_multi_platform(
         except Exception as e:
             print(f"{platform.upper()} failed: {e}")
     
-    # Final counts
     results['posts_total'] = db.query(SocialPost).filter(
         SocialPost.attraction_id == attraction_id
     ).count()
@@ -160,17 +139,8 @@ async def collect_for_attraction_multi_platform(
 
 
 async def run_collection(province_names: List[str] = None, attractions_per_province: int = 3, all_attractions: bool = False):
-    """
-    Main collection orchestrator.
-    
-    Args:
-        province_names: List of province names to collect for (None = all)
-        attractions_per_province: How many attractions to process per province
-        all_attractions: Process all active attractions (ignores limit)
-    """
     db = next(get_db())
     
-    # Initialize pipeline
     pipeline = create_data_pipeline()
     
     print("\n" + "="*70)
@@ -202,7 +172,6 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
         print(f"\n{province.name}: Processing attractions...")
         print()
         
-        # Get attractions for this province
         attraction_query = db.query(TouristAttraction).filter(
             TouristAttraction.province_id == province.id,
             TouristAttraction.is_active == True
@@ -224,7 +193,6 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
             )
             results.append(result)
             
-            # Add small delay between attractions to avoid rate limits
             try:
                 print("Waiting 5 seconds before next attraction...")
                 await asyncio.sleep(5)
@@ -234,7 +202,6 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
     
     db.close()
     
-    # Print summary
     print("\n" + "="*70)
     print("COLLECTION COMPLETE - FINAL SUMMARY")
     print("="*70)
@@ -248,7 +215,6 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
             print(f"   Platforms: {', '.join(result['platforms_used'])}")
         print()
     
-    # Totals
     total_posts_collected = sum(r['posts_collected'] for r in results)
     total_comments_collected = sum(r['comments_collected'] for r in results)
     total_attractions = len(results)
