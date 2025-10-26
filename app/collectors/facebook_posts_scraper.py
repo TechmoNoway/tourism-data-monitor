@@ -1,8 +1,3 @@
-"""
-Facebook Posts Scraper using Apify
-Uses apify/facebook-posts-scraper for better post and comment collection
-Optimized for cost efficiency with $4 budget
-"""
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
@@ -18,28 +13,12 @@ from app.schemas.comment import CommentCreate
 
 
 class FacebookPostsScraper(BaseCollector):
-    """
-    Facebook collector using Apify's facebook-posts-scraper
-    
-    Advantages:
-    - Scrapes posts AND comments in one run
-    - More cost-effective than multiple actors
-    - Good for tourism locations with many comments
-    - Handles pagination automatically
-    
-    Cost optimization:
-    - Limit posts per search (10-20 posts)
-    - Target posts with high engagement (many comments)
-    - Use specific page URLs instead of broad searches
-    """
-    
     def __init__(self, apify_api_token: str):
         super().__init__("facebook")
         self.apify_token = apify_api_token
         self.client = None
         
     def authenticate(self, **credentials) -> bool:
-        """Initialize Apify client"""
         try:
             self.client = ApifyClient(self.apify_token)
             user_info = self.client.user().get()
@@ -59,41 +38,18 @@ class FacebookPostsScraper(BaseCollector):
         limit: int = 20,
         comments_per_post: int = 50
     ) -> List[Dict[str, Any]]:
-        """
-        Collect posts AND comments using 2-actor strategy.
-        
-        This is the RECOMMENDED method for complete data collection.
-        
-        Flow:
-        1. Collect posts using facebook-posts-scraper
-        2. Extract post URLs from results
-        3. Collect comments using facebook-comments-scraper (separate actor)
-        4. Merge comments back into posts
-        
-        Args:
-            keywords: Page URLs, hashtags, or search terms (List[str] or str)
-            location: Optional location filter
-            limit: Max posts per keyword (default: 20)
-            comments_per_post: Max comments per post (default: 50)
-            
-        Returns:
-            List of posts with comments included in 'comments' field
-        """
-        # Defensive: ensure keywords is always a list (fix pipeline string bug)
         if isinstance(keywords, str):
             self.logger.debug(f"Converting string keywords to list: {keywords}")
             keywords = [keywords]
         
         self.logger.info("🔄 Using 2-actor strategy: Posts + Comments")
         
-        # STEP 1: Collect posts (posts only, no comments yet)
         posts = await self.collect_posts(keywords=keywords, location=location, limit=limit)
         
         if not posts:
             self.logger.warning("No posts collected, skipping comment collection")
             return posts
         
-        # STEP 2: Extract post URLs
         post_urls = [post.get("url") for post in posts if post.get("url")]
         
         if not post_urls:
@@ -102,20 +58,16 @@ class FacebookPostsScraper(BaseCollector):
         
         self.logger.info(f"📝 Extracted {len(post_urls)} post URLs for comment collection")
         
-        # STEP 3: Collect comments from URLs using dedicated actor
         comments = await self._scrape_comments_from_urls(post_urls, comments_per_post)
         
         if not comments:
             self.logger.warning("No comments collected")
-            # Return posts without comments
             for post in posts:
                 post["comments"] = []
             return posts
         
-        # STEP 4: Merge comments into posts
         self.logger.info("🔗 Merging comments with posts...")
         
-        # Group comments by post URL
         comments_by_post = {}
         for comment in comments:
             post_url = comment.get("post_url")
@@ -124,7 +76,6 @@ class FacebookPostsScraper(BaseCollector):
                     comments_by_post[post_url] = []
                 comments_by_post[post_url].append(comment)
         
-        # Add comments to posts
         posts_with_comments = 0
         total_comments = 0
         
@@ -147,26 +98,9 @@ class FacebookPostsScraper(BaseCollector):
         location: Optional[str] = None,
         limit: int = 20
     ) -> List[Dict[str, Any]]:
-        """
-        Collect Facebook posts using Apify (POSTS ONLY, no comments)
-        
-        Uses multiple strategies:
-        1. Direct page URLs (e.g., "https://www.facebook.com/banahills")
-        2. Hashtag search (e.g., "#banahills")  
-        3. Keyword search (fallback)
-        
-        Args:
-            keywords: Page URLs, hashtags, or search terms (List[str] or str)
-            location: Optional location filter
-            limit: Max posts
-            
-        Returns:
-            List of post data with embedded comments
-        """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
         
-        # Defensive: ensure keywords is always a list
         if isinstance(keywords, str):
             self.logger.debug(f"Converting string keywords to list: {keywords}")
             keywords = [keywords]
@@ -174,11 +108,10 @@ class FacebookPostsScraper(BaseCollector):
         all_posts = []
         
         try:
-            # Separate page URLs from keywords
             page_urls = [k for k in keywords if k.startswith("http")]
             search_keywords = [k for k in keywords if not k.startswith("http")]
             
-            # Strategy 1: Scrape from pages (more reliable)
+            # Strategy 1: Scrape from pages 
             if page_urls:
                 posts = await self._scrape_from_pages(page_urls, limit)
                 all_posts.extend(posts)
@@ -199,20 +132,6 @@ class FacebookPostsScraper(BaseCollector):
         return all_posts
     
     async def _scrape_comments_from_urls(self, post_urls: List[str], comments_per_post: int = 50) -> List[Dict[str, Any]]:
-        """
-        Scrape comments from Facebook post URLs using dedicated comments scraper.
-        
-        This is a SEPARATE actor specifically for comment collection.
-        Actor: apify/facebook-comments-scraper
-        
-        Args:
-            post_urls: List of Facebook post URLs to scrape comments from
-            comments_per_post: Maximum comments to collect per post (default: 50)
-            
-        Returns:
-            List of comment dictionaries with keys:
-            - commentUrl, text, profileName, likesCount, date, etc.
-        """
         all_comments = []
         
         if not post_urls:
@@ -227,7 +146,7 @@ class FacebookPostsScraper(BaseCollector):
             run_input = {
                 "startUrls": [{"url": url} for url in post_urls],
                 "resultsLimit": comments_per_post,
-                "sort": "newest",  # Options: newest, most_relevant, all
+                "sort": "newest", 
                 "maxComments": comments_per_post,
                 "proxy": {
                     "useApifyProxy": True,
@@ -249,7 +168,6 @@ class FacebookPostsScraper(BaseCollector):
             
             for item in items:
                 try:
-                    # Map Apify comment fields to our schema
                     comment_data = {
                         "comment_id": item.get("id") or item.get("feedbackId", ""),
                         "text": item.get("text", ""),
@@ -277,35 +195,27 @@ class FacebookPostsScraper(BaseCollector):
         return all_comments
     
     async def _scrape_from_pages(self, page_urls: List[str], limit: int) -> List[Dict[str, Any]]:
-        """Scrape posts from Facebook page URLs.
-
-        Notes:
-        - Use apify/facebook-posts-scraper with startUrls set to page URLs (not the pages metadata actor).
-        - Limit pages to first 2 to control Apify cost.
-        """
         posts = []
 
-        # Defensive: ensure list
         if not page_urls:
             return posts
 
         try:
             actor_id = "apify/facebook-posts-scraper"
 
-            # Limit to 2 pages to save costs
-            page_urls = page_urls[:2]
+            # Increased from 2 to 3 pages for more coverage
+            page_urls = page_urls[:3]
 
             self.logger.info(f"📍 Scraping {len(page_urls)} Facebook pages using Posts Scraper")
 
-            # apify/facebook-posts-scraper expects startUrls as list of strings or dicts
             run_input = {
                 "startUrls": [{"url": url} for url in page_urls],
-                "resultsLimit": limit,
-                "maxComments": 100,  # Increased for better data collection
-                "maxCommentsPerPost": 100,
+                "resultsLimit": min(limit, 50),  # Increased from default, max 50 posts per page
+                "maxComments": 500,  # Increased from 100 to 500 for better data
+                "maxCommentsPerPost": 100,  # Keep 100 per post (balanced)
                 "commentsMode": "RANKED_RELEVANT",
-                "scrapePostComments": True,  # Enable comment scraping
-                "scrapeReactions": False,
+                "scrapePostComments": True,
+                "scrapeReactions": False,  # Skip reactions to save cost, focus on comments
                 "proxyConfiguration": {"useApifyProxy": True},
             }
 

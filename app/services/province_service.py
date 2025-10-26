@@ -11,22 +11,18 @@ class ProvinceService:
         self.db = db
     
     def get_all_provinces(self) -> List[ProvinceSchema]:
-        """Lấy tất cả các tỉnh thành"""
         provinces = self.db.query(Province).all()
         return [ProvinceSchema.from_orm(province) for province in provinces]
     
     def get_province_by_id(self, province_id: int) -> Optional[ProvinceSchema]:
-        """Lấy tỉnh theo ID"""
         province = self.db.query(Province).filter(Province.id == province_id).first()
         return ProvinceSchema.from_orm(province) if province else None
     
     def get_province_by_code(self, province_code: str) -> Optional[ProvinceSchema]:
-        """Lấy tỉnh theo mã tỉnh"""
         province = self.db.query(Province).filter(Province.code == province_code).first()
         return ProvinceSchema.from_orm(province) if province else None
     
     def get_attractions_by_province_id(self, province_id: int, active_only: bool = True) -> List[AttractionSchema]:
-        """Lấy tất cả khu du lịch của một tỉnh theo ID"""
         query = self.db.query(TouristAttraction).filter(TouristAttraction.province_id == province_id)
         
         if active_only:
@@ -36,7 +32,6 @@ class ProvinceService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_attractions_by_province_code(self, province_code: str, active_only: bool = True) -> List[AttractionSchema]:
-        """Lấy tất cả khu du lịch của một tỉnh theo mã tỉnh"""
         province = self.get_province_by_code(province_code)
         if not province:
             return []
@@ -44,7 +39,6 @@ class ProvinceService:
         return self.get_attractions_by_province_id(province.id, active_only)
     
     def get_attractions_with_province_info(self, province_id: int, active_only: bool = True) -> List[AttractionSchema]:
-        """Lấy khu du lịch kèm thông tin tỉnh"""
         query = self.db.query(TouristAttraction).join(Province).filter(
             TouristAttraction.province_id == province_id
         )
@@ -56,12 +50,10 @@ class ProvinceService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_province_with_stats(self, province_id: int) -> Optional[ProvinceWithStats]:
-        """Lấy tỉnh kèm thống kê"""
         province = self.db.query(Province).filter(Province.id == province_id).first()
         if not province:
             return None
         
-        # Tính toán thống kê
         total_attractions = self.db.query(TouristAttraction).filter(
             TouristAttraction.province_id == province_id
         ).count()
@@ -71,7 +63,6 @@ class ProvinceService:
             TouristAttraction.is_active.is_(True)
         ).count()
         
-        # TODO: Thêm thống kê comments và sentiment khi có dữ liệu
         total_comments = 0
         avg_sentiment = 0.0
         
@@ -88,7 +79,6 @@ class ProvinceService:
         )
     
     def search_attractions_by_name(self, province_id: int, search_term: str) -> List[AttractionSchema]:
-        """Tìm kiếm khu du lịch theo tên trong một tỉnh"""
         attractions = self.db.query(TouristAttraction).filter(
             TouristAttraction.province_id == province_id,
             TouristAttraction.name.ilike(f"%{search_term}%"),
@@ -98,7 +88,6 @@ class ProvinceService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_attractions_by_category(self, province_id: int, category: str) -> List[AttractionSchema]:
-        """Lấy khu du lịch theo danh mục trong một tỉnh"""
         attractions = self.db.query(TouristAttraction).filter(
             TouristAttraction.province_id == province_id,
             TouristAttraction.category == category,

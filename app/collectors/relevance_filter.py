@@ -1,27 +1,11 @@
-"""
-Relevance Filter for Social Media Content
-
-Filters and scores posts/videos based on relevance to tourist attractions.
-Helps remove spam, unrelated content, and improve data quality.
-"""
 from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime, timedelta
 
 
 class RelevanceFilter:
-    """
-    Filter to determine if social media content is relevant to a tourist attraction
-    """
     
     def __init__(self, min_relevance_score: float = 0.2):  # Giảm từ 0.3 → 0.2
-        """
-        Initialize relevance filter
-        
-        Args:
-            min_relevance_score: Minimum score (0-1) to consider content relevant
-                               Default 0.2 (was 0.3) - more lenient for TikTok
-        """
         self.min_relevance_score = min_relevance_score
         self.logger = logging.getLogger("relevance_filter")
         
@@ -61,30 +45,30 @@ class RelevanceFilter:
         """
         keywords = []
         
-        # 1. Core keywords - attraction name variations
+        # Core keywords - attraction name variations
         keywords.append(attraction_name)
         
         # Remove accents for alternative search
         keywords.append(self._remove_accents(attraction_name))
         
-        # 2. Location-based keywords
+        # Location-based keywords
         keywords.append(f"{attraction_name} {province_name}")
         keywords.append(f"{attraction_name} du lịch")
         keywords.append(f"{attraction_name} travel")
         keywords.append(f"{attraction_name} review")
         keywords.append(f"{attraction_name} check in")
         
-        # 3. Platform-specific keywords
-        # For YouTube (longer, more descriptive)
+        # Platform-specific keywords
+        # For YouTube
         keywords.append(f"du lịch {attraction_name}")
         keywords.append(f"review {attraction_name}")
         keywords.append(f"tham quan {attraction_name}")
         
-        # For Facebook/TikTok (shorter, hashtag-friendly)
+        # For Facebook/TikTok
         keywords.append(f"#{attraction_name.replace(' ', '')}")
         keywords.append(f"#{province_name.replace(' ', '')}")
         
-        # 4. Additional keywords
+        # Additional keywords
         if additional_keywords:
             keywords.extend(additional_keywords)
         
@@ -121,7 +105,7 @@ class RelevanceFilter:
         content_lower = content.lower() if content else ""
         title_lower = title.lower() if title else ""
         
-        # 1. Check attraction name mention (40% weight)
+        #  Check attraction name mention (40% weight)
         attraction_lower = attraction_name.lower()
         if attraction_lower in content_lower:
             score += 0.4
@@ -130,34 +114,34 @@ class RelevanceFilter:
         elif self._fuzzy_match(attraction_lower, content_lower):
             score += 0.2
         
-        # 2. Check province mention (20% weight)
+        # Check province mention (20% weight)
         province_lower = province_name.lower()
         if province_lower in content_lower or province_lower in title_lower:
             score += 0.2
         
-        # 3. Check tourism keywords (20% weight)
+        # Check tourism keywords (20% weight)
         tourism_found = sum(1 for kw in self.tourism_keywords if kw in content_lower or kw in title_lower)
         if tourism_found > 0:
             score += min(0.2, tourism_found * 0.05)
         
-        # 4. Check hashtags (10% weight)
+        # Check hashtags (10% weight)
         if hashtags:
             hashtag_str = ' '.join(hashtags).lower()
             if attraction_lower in hashtag_str or province_lower in hashtag_str:
                 score += 0.1
         
-        # 5. Bonus for quality indicators (10% weight)
+        # Bonus for quality indicators (10% weight)
         quality_keywords = ['review', 'đánh giá', 'trải nghiệm', 'tham quan', 'check in']
         quality_found = sum(1 for kw in quality_keywords if kw in content_lower or kw in title_lower)
         if quality_found > 0:
             score += min(0.1, quality_found * 0.03)
         
-        # 6. Penalty for spam (-0.5 max)
+        # Penalty for spam (-0.5 max)
         spam_found = sum(1 for kw in self.spam_keywords if kw in content_lower or kw in title_lower)
         if spam_found > 0:
             score -= min(0.5, spam_found * 0.15)
         
-        # 7. Penalty for very short content (-0.2)
+        # Penalty for very short content (-0.2)
         if content and len(content) < 20:
             score -= 0.2
         
@@ -260,24 +244,12 @@ class RelevanceFilter:
         posts: List[Dict[str, Any]],
         key_field: str = 'post_id'
     ) -> List[Dict[str, Any]]:
-        """
-        Remove duplicate posts based on ID or content
-        
-        Args:
-            posts: List of posts
-            key_field: Field to check for duplicates
-            
-        Returns:
-            Deduplicated list
-        """
         seen = set()
         unique = []
         
         for post in posts:
-            # Get unique identifier
             key = post.get(key_field) or post.get('id') or post.get('video_id')
             
-            # If no ID, use content hash
             if not key:
                 content = post.get('message', '') or post.get('description', '')
                 key = hash(content[:100])
@@ -335,10 +307,6 @@ class RelevanceFilter:
 
 
 class PlatformKeywordOptimizer:
-    """
-    Optimize keywords for specific social media platforms
-    """
-    
     @staticmethod
     def optimize_for_youtube(keywords: List[str]) -> List[str]:
         """
@@ -348,11 +316,9 @@ class PlatformKeywordOptimizer:
         optimized = []
         
         for keyword in keywords:
-            # Add common YouTube search patterns
             optimized.append(keyword)
             
             if len(keyword.split()) == 1:
-                # Single word - add context
                 optimized.append(f"{keyword} travel vlog")
                 optimized.append(f"du lịch {keyword}")
                 optimized.append(f"{keyword} review 2024")
@@ -402,13 +368,4 @@ class PlatformKeywordOptimizer:
 
 # Helper function for easy use
 def create_relevance_filter(min_score: float = 0.3) -> RelevanceFilter:
-    """
-    Create a RelevanceFilter instance
-    
-    Args:
-        min_score: Minimum relevance score (0-1)
-        
-    Returns:
-        Configured RelevanceFilter
-    """
     return RelevanceFilter(min_relevance_score=min_score)

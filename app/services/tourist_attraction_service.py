@@ -16,7 +16,6 @@ class TouristAttractionService:
         self.db = db
     
     def get_all_attractions(self, active_only: bool = True) -> List[AttractionSchema]:
-        """Lấy tất cả khu du lịch"""
         query = self.db.query(TouristAttraction)
         
         if active_only:
@@ -26,14 +25,12 @@ class TouristAttractionService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_attraction_by_id(self, attraction_id: int) -> Optional[AttractionSchema]:
-        """Lấy khu du lịch theo ID"""
         attraction = self.db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
         ).first()
         return AttractionSchema.from_orm(attraction) if attraction else None
     
     def get_attraction_with_province(self, attraction_id: int) -> Optional[TouristAttractionWithProvince]:
-        """Lấy khu du lịch kèm thông tin tỉnh"""
         attraction = self.db.query(TouristAttraction).join(Province).filter(
             TouristAttraction.id == attraction_id
         ).first()
@@ -47,7 +44,6 @@ class TouristAttractionService:
         )
     
     def create_attraction(self, attraction_data: TouristAttractionCreate) -> AttractionSchema:
-        """Tạo khu du lịch mới"""
         db_attraction = TouristAttraction(**attraction_data.dict())
         self.db.add(db_attraction)
         self.db.commit()
@@ -55,7 +51,6 @@ class TouristAttractionService:
         return AttractionSchema.from_orm(db_attraction)
     
     def update_attraction(self, attraction_id: int, update_data: TouristAttractionUpdate) -> Optional[AttractionSchema]:
-        """Cập nhật thông tin khu du lịch"""
         attraction = self.db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
         ).first()
@@ -63,7 +58,6 @@ class TouristAttractionService:
         if not attraction:
             return None
         
-        # Update fields
         update_dict = update_data.dict(exclude_unset=True)
         for field, value in update_dict.items():
             setattr(attraction, field, value)
@@ -73,7 +67,6 @@ class TouristAttractionService:
         return AttractionSchema.from_orm(attraction)
     
     def deactivate_attraction(self, attraction_id: int) -> bool:
-        """Vô hiệu hóa khu du lịch (soft delete)"""
         attraction = self.db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
         ).first()
@@ -91,10 +84,8 @@ class TouristAttractionService:
                          category: Optional[str] = None,
                          min_rating: Optional[float] = None,
                          active_only: bool = True) -> List[AttractionSchema]:
-        """Tìm kiếm khu du lịch với nhiều điều kiện"""
         query = self.db.query(TouristAttraction)
         
-        # Filter conditions
         conditions = []
         
         if active_only:
@@ -124,7 +115,6 @@ class TouristAttractionService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_popular_attractions(self, province_id: Optional[int] = None, limit: int = 10) -> List[AttractionSchema]:
-        """Lấy các khu du lịch phổ biến (theo rating và reviews)"""
         query = self.db.query(TouristAttraction).filter(
             TouristAttraction.is_active.is_(True)
         )
@@ -140,7 +130,6 @@ class TouristAttractionService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_attractions_by_category(self, category: str, province_id: Optional[int] = None) -> List[AttractionSchema]:
-        """Lấy khu du lịch theo danh mục"""
         query = self.db.query(TouristAttraction).filter(
             TouristAttraction.category == category,
             TouristAttraction.is_active.is_(True)
@@ -153,7 +142,6 @@ class TouristAttractionService:
         return [AttractionSchema.from_orm(attraction) for attraction in attractions]
     
     def get_categories(self, province_id: Optional[int] = None) -> List[str]:
-        """Lấy danh sách các danh mục có sẵn"""
         query = self.db.query(TouristAttraction.category).filter(
             TouristAttraction.category.isnot(None),
             TouristAttraction.is_active.is_(True)
@@ -166,7 +154,6 @@ class TouristAttractionService:
         return [category[0] for category in categories if category[0]]
     
     def update_rating(self, attraction_id: int, new_rating: float, new_review_count: int) -> Optional[AttractionSchema]:
-        """Cập nhật rating và số lượng review"""
         attraction = self.db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
         ).first()

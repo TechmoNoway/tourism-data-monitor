@@ -1,6 +1,3 @@
-"""
-Background Scheduler for Automated Data Collection
-"""
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
@@ -17,10 +14,7 @@ from app.collectors.data_pipeline import create_data_pipeline
 
 
 class CollectionScheduler:
-    """
-    Automated scheduler for tourism data collection
-    """
-    
+   
     def __init__(self, api_credentials: Dict[str, Any]):
         self.logger = logging.getLogger("collection_scheduler")
         self.scheduler = AsyncIOScheduler()
@@ -87,14 +81,6 @@ class CollectionScheduler:
         platforms: Optional[List[str]] = None,
         limit_per_platform: int = 10
     ):
-        """
-        Schedule hourly collection for specific attractions
-        
-        Args:
-            attraction_ids: List of attraction IDs to monitor
-            platforms: List of platforms to use
-            limit_per_platform: Maximum items per platform
-        """
         trigger = IntervalTrigger(hours=1)
         
         self.scheduler.add_job(
@@ -114,14 +100,6 @@ class CollectionScheduler:
         hour: int = 1,
         minute: int = 0
     ):
-        """
-        Schedule weekly full collection of all data
-        
-        Args:
-            day_of_week: Day of week (0=Monday, 6=Sunday)
-            hour: Hour to run
-            minute: Minute to run
-        """
         trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
         
         self.scheduler.add_job(
@@ -139,7 +117,6 @@ class CollectionScheduler:
         provinces: Optional[List[int]] = None,
         platforms: Optional[List[str]] = None
     ):
-        """Daily collection job implementation"""
         self.logger.info("Starting daily collection job")
         self.stats['total_runs'] += 1
         self.stats['last_run'] = datetime.utcnow().isoformat()
@@ -164,7 +141,6 @@ class CollectionScheduler:
                         results['total_comments'] += province_result['total_comments']
                         results['provinces_processed'] += 1
                         
-                        # Add delay between provinces
                         await asyncio.sleep(5)
                         
                     except Exception as e:
@@ -192,7 +168,6 @@ class CollectionScheduler:
         platforms: Optional[List[str]] = None,
         limit_per_platform: int = 10
     ):
-        """Hourly collection job for hot attractions"""
         self.logger.info(f"Starting hourly collection for {len(attraction_ids)} attractions")
         
         try:
@@ -210,7 +185,6 @@ class CollectionScheduler:
                     total_posts += result['total_posts']
                     total_comments += result['total_comments']
                     
-                    # Short delay between attractions
                     await asyncio.sleep(2)
                     
                 except Exception as e:
@@ -225,14 +199,12 @@ class CollectionScheduler:
             self.logger.error(f"Hourly collection job failed: {str(e)}")
     
     async def _weekly_full_collection_job(self):
-        """Weekly full collection job"""
         self.logger.info("Starting weekly full collection job")
         
         try:
-            # Full collection with higher limits
             results = await self.pipeline.collect_all_provinces(
-                platforms=None,  # All platforms
-                limit_per_attraction=50  # Higher limit for weekly collection
+                platforms=None,  
+                limit_per_attraction=50 
             )
             
             # Update statistics
@@ -250,17 +222,7 @@ class CollectionScheduler:
         target_id: Optional[int] = None,
         platforms: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """
-        Run manual collection immediately
-        
-        Args:
-            collection_type: Type of collection ('province', 'attraction', 'all_provinces')
-            target_id: Province ID or Attraction ID (depending on type)
-            platforms: List of platforms to use
-            
-        Returns:
-            Collection results
-        """
+
         async def _run_collection():
             if collection_type == "province" and target_id:
                 return await self.pipeline.collect_for_province(target_id, platforms, 30)
@@ -271,7 +233,6 @@ class CollectionScheduler:
             else:
                 raise ValueError(f"Invalid collection type: {collection_type}")
         
-        # Run the async function
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         

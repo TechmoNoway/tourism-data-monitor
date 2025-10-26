@@ -7,42 +7,20 @@ from app.database.connection import get_db
 from app.models.tourist_attraction import TouristAttraction
 from app.models.province import Province
 from app.collectors.youtube_collector import create_youtube_collector
-from app.collectors.google_reviews_collector import create_google_reviews_collector
-from app.collectors.facebook_apify_collector import create_facebook_apify_collector
 from app.collectors.facebook_posts_scraper import FacebookPostsScraper
-from app.collectors.tiktok_apify_collector import create_tiktok_apify_collector
-from app.collectors.facebook_rapid_collector import create_facebook_rapid_collector
-from app.collectors.tiktok_rapid_collector import create_tiktok_rapid_collector
-from app.collectors.google_maps_apify_collector import create_google_maps_apify_collector
+from app.collectors.tiktok_collector import create_tiktok_collector
+from app.collectors.google_maps_collector import create_google_maps_collector
 
 
 class DataCollectionPipeline:
-    """
-    Main pipeline for collecting tourism data from multiple platforms
-    """
-    
+  
     def __init__(self, 
                  youtube_api_key: Optional[str] = None,
-                 google_maps_api_key: Optional[str] = None,
-                 apify_api_token: Optional[str] = None,
-                 rapidapi_key: Optional[str] = None,
-                 use_rapidapi: bool = False):
-        """
-        Initialize data collection pipeline
-        
-        Args:
-            youtube_api_key: YouTube Data API v3 key
-            google_maps_api_key: Google Maps/Places API key
-            apify_api_token: Apify API token (for Facebook & TikTok scraping)
-            rapidapi_key: RapidAPI key (alternative to Apify)
-            use_rapidapi: If True, use RapidAPI instead of Apify for FB/TikTok
-        """
-        
+                 apify_api_token: Optional[str] = None):        
         self.logger = logging.getLogger("data_collection_pipeline")
         
         self.collectors = {}
         
-        # YouTube - uses API (works well)
         if youtube_api_key:
             try:
                 self.collectors['youtube'] = create_youtube_collector(youtube_api_key)
@@ -50,55 +28,30 @@ class DataCollectionPipeline:
             except Exception as e:
                 self.logger.error(f"Failed to initialize YouTube collector: {str(e)}")
         
-        # Google Reviews - uses API (works well)
-        if google_maps_api_key:
+        if apify_api_token:
             try:
-                self.collectors['google_reviews'] = create_google_reviews_collector(google_maps_api_key)
-                self.logger.info("Google Reviews collector initialized")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize Google Reviews collector: {str(e)}")
-        
-        # Facebook & TikTok - choose between Apify or RapidAPI
-        if use_rapidapi and rapidapi_key:
-            # Use RapidAPI for Facebook & TikTok
-            try:
-                self.collectors['facebook'] = create_facebook_rapid_collector(rapidapi_key)
-                self.logger.info("Facebook (RapidAPI) collector initialized")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize Facebook RapidAPI collector: {str(e)}")
-            
-            try:
-                self.collectors['tiktok'] = create_tiktok_rapid_collector(rapidapi_key)
-                self.logger.info("TikTok (RapidAPI) collector initialized")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize TikTok RapidAPI collector: {str(e)}")
-                
-        elif apify_api_token:
-            # Use Apify for Facebook & TikTok (default)
-            try:
-                # Use FacebookPostsScraper for better post+comment collection
                 facebook_collector = FacebookPostsScraper(apify_api_token)
                 if facebook_collector.authenticate():
                     self.collectors['facebook'] = facebook_collector
-                    self.logger.info("✓ Facebook Posts Scraper (Apify) initialized - Cost optimized!")
+                    self.logger.info("✓ Facebook Posts Scraper initialized")
                 else:
                     self.logger.error("Failed to authenticate Facebook Posts Scraper")
             except Exception as e:
-                self.logger.error(f"Failed to initialize Facebook Apify collector: {str(e)}")
+                self.logger.error(f"Failed to initialize Facebook collector: {str(e)}")
             
             try:
-                self.collectors['tiktok'] = create_tiktok_apify_collector(apify_api_token)
-                self.logger.info("TikTok (Apify) collector initialized")
+                self.collectors['tiktok'] = create_tiktok_collector(apify_api_token)
+                self.logger.info("✓ TikTok collector initialized")
             except Exception as e:
-                self.logger.error(f"Failed to initialize TikTok Apify collector: {str(e)}")
+                self.logger.error(f"Failed to initialize TikTok collector: {str(e)}")
             
             try:
-                self.collectors['google_maps'] = create_google_maps_apify_collector(apify_api_token)
-                self.logger.info("✓ Google Maps (Apify) collector initialized - High quality reviews!")
+                self.collectors['google_maps'] = create_google_maps_collector(apify_api_token)
+                self.logger.info("✓ Google Maps collector initialized")
             except Exception as e:
-                self.logger.error(f"Failed to initialize Google Maps Apify collector: {str(e)}")
+                self.logger.error(f"Failed to initialize Google Maps collector: {str(e)}")
         else:
-            self.logger.warning("No Apify or RapidAPI token provided - Facebook & TikTok collectors not available")
+            self.logger.warning("No Apify token provided - Facebook, TikTok & Google Maps collectors not available")
     
     async def collect_for_attraction(
         self, 
@@ -106,18 +59,6 @@ class DataCollectionPipeline:
         platforms: Optional[List[str]] = None,
         limit_per_platform: int = 50
     ) -> Dict[str, Any]:
-        """
-        Collect data for a specific tourist attraction from all platforms
-        
-        Args:
-            attraction_id: Database ID of the tourist attraction
-            platforms: List of platforms to collect from (default: all available)
-            limit_per_platform: Maximum items to collect per platform
-            
-        Returns:
-            Summary of collection results
-        """
-        # Get attraction info from database
         db = next(get_db())
         attraction = db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
@@ -188,28 +129,13 @@ class DataCollectionPipeline:
         province_name: str,
         limit: int
     ) -> Dict[str, Any]:
-        """
-        Collect from a specific platform with relevance filtering
-        
-        Args:
-            platform: Platform name
-            attraction_id: Database ID
-            attraction_name: Name of attraction
-            province_name: Name of province
-            limit: Max items to collect
-            
-        Returns:
-            Collection statistics
-        """
         collector = self.collectors[platform]
         
-        # Special handling for Facebook with validated best pages
         if platform == 'facebook' and hasattr(collector, 'collect_posts_with_comments'):
             return await self._collect_facebook_with_best_pages(
                 collector, attraction_id, attraction_name, province_name, limit
             )
         
-        # Generate optimized keywords using the collector's method
         keywords = collector.generate_search_keywords(attraction_name, province_name)
         
         self.logger.info(f"Searching {platform} with keywords: {keywords[:3]}...")  # Log first 3 keywords
@@ -259,7 +185,7 @@ class DataCollectionPipeline:
                     all_comments.extend(comments)
                     self.logger.info(f"   ✅ Stored {len(comments)} comments")
                 else:
-                    self.logger.info(f"   ℹ️  No comments found")
+                    self.logger.info("   ℹ️  No comments found")
                     
             except Exception as e:
                 self.logger.warning(f"Failed to collect comments for post {platform_post_id}: {str(e)}")
@@ -296,25 +222,14 @@ class DataCollectionPipeline:
         province_name: str,
         limit: int
     ) -> Dict[str, Any]:
-        """
-        Collect Facebook data using validated best pages (Smart Page Selection strategy)
-        
-        This method uses high-engagement pages identified through testing rather than
-        keyword search, resulting in better comment collection rates.
-        
-        Returns:
-            Collection statistics with comments included
-        """
         from app.core.config import settings
         
         self.logger.info(f"🎯 Using Facebook Best Pages strategy for {attraction_name}")
         
-        # Map attraction/province to best page
         page_url = None
         location_key = None
         use_direct_page = False
         
-        # Try to match by attraction or province name
         attraction_lower = attraction_name.lower()
         province_lower = province_name.lower()
         
@@ -341,10 +256,8 @@ class DataCollectionPipeline:
             page_url = keywords[0] if keywords else attraction_name
             self.logger.info(f"🔍 Using KEYWORD search: {page_url}")
         
-        # CRITICAL: Ensure keywords is always a list (fix string iteration bug)
         keywords_list = [page_url] if isinstance(page_url, str) else page_url
         
-        # Collect posts WITH comments using 2-actor strategy
         posts_with_comments = await collector.collect_posts_with_comments(
             keywords=keywords_list,
             limit=limit,
@@ -357,10 +270,10 @@ class DataCollectionPipeline:
         filtered_posts = collector.filter_relevant_posts(posts_with_comments, attraction_name, province_name)
         filtered_count = initial_count - len(filtered_posts)
         
-        # Store posts and get mapping (returns dict: platform_post_id -> db_post_id)
+        # Store posts and get mapping
         post_id_mapping = collector.process_and_store_posts(filtered_posts, attraction_id)
         
-        # Process and store comments (already collected with posts)
+        # Process and store comments
         all_comments = []
         for post in filtered_posts:
             # Get platform post ID
@@ -510,21 +423,9 @@ class DataCollectionPipeline:
         return results
     
     def get_available_platforms(self) -> List[str]:
-        """
-        Get list of available collectors
-        
-        Returns:
-            List of platform names
-        """
         return list(self.collectors.keys())
     
     def get_collection_stats(self) -> Dict[str, Any]:
-        """
-        Get statistics about available collectors
-        
-        Returns:
-            Collector statistics
-        """
         stats = {
             'total_collectors': len(self.collectors),
             'available_platforms': list(self.collectors.keys()),
@@ -542,23 +443,7 @@ class DataCollectionPipeline:
 
 # Factory function for easy instantiation
 def create_data_pipeline(**api_credentials) -> DataCollectionPipeline:
-    """
-    Create DataCollectionPipeline with API credentials
-    
-    Args:
-        youtube_api_key: YouTube Data API v3 key
-        google_maps_api_key: Google Maps/Places API key
-        apify_api_token: Apify API token (for Facebook & TikTok scraping)
-        rapidapi_key: RapidAPI key (alternative to Apify)
-        use_rapidapi: If True, use RapidAPI instead of Apify (default: False)
-    
-    Returns:
-        Configured DataCollectionPipeline instance
-    """
     return DataCollectionPipeline(
         youtube_api_key=api_credentials.get('youtube_api_key'),
-        google_maps_api_key=api_credentials.get('google_maps_api_key'),
-        apify_api_token=api_credentials.get('apify_api_token'),
-        rapidapi_key=api_credentials.get('rapidapi_key'),
-        use_rapidapi=api_credentials.get('use_rapidapi', False)
+        apify_api_token=api_credentials.get('apify_api_token')
     )

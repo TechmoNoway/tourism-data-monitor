@@ -1,7 +1,3 @@
-"""
-Google Maps Collector using Apify
-Uses compass/Google-Maps-Reviews-Scraper for reviews (comments)
-"""
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
@@ -17,17 +13,7 @@ from app.schemas.comment import CommentCreate
 
 
 class GoogleMapsApifyCollector(BaseCollector):
-    """
-    Google Maps collector using Apify actors.
-    
-    Perfect for tourism data:
-    - Rich reviews with ratings and photos
-    - High volume of authentic user reviews
-    - Better quality than social media comments for tourism
-    
-    Actors used:
-    - compass/Google-Maps-Reviews-Scraper: Get reviews for a place
-    """
+
     
     def __init__(self, apify_api_token: str):
         super().__init__("google_maps")
@@ -35,7 +21,6 @@ class GoogleMapsApifyCollector(BaseCollector):
         self.client = None
         
     def authenticate(self, **credentials) -> bool:
-        """Initialize Apify client"""
         try:
             self.client = ApifyClient(self.apify_token)
             user_info = self.client.user().get()
@@ -54,23 +39,10 @@ class GoogleMapsApifyCollector(BaseCollector):
         location: Optional[str] = None,
         limit: int = 20
     ) -> List[Dict[str, Any]]:
-        """
-        For Google Maps, "posts" are actually place listings.
-        We'll search for places and return them as posts.
-        The real content (reviews) will be collected via collect_comments().
         
-        Args:
-            keywords: Place names or search queries
-            location: Province/city name
-            limit: Max places to find
-            
-        Returns:
-            List of place data (treated as posts)
-        """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
         
-        # Defensive: ensure keywords is a list
         if isinstance(keywords, str):
             keywords = [keywords]
         
@@ -78,23 +50,24 @@ class GoogleMapsApifyCollector(BaseCollector):
         
         try:
             # Search for each keyword
-            for keyword in keywords[:3]:  # Limit to 3 keywords to save costs
+            for keyword in keywords[:5]:  
                 search_query = f"{keyword} {location}" if location else keyword
                 
                 self.logger.info(f"🔍 Searching Google Maps: {search_query}")
                 
-                # Use Google Maps Extractor to find places
                 actor_id = "compass/google-maps-extractor"
                 
                 run_input = {
                     "searchString": search_query,
-                    "maxCrawledPlaces": min(limit, 5),  # Limit places per keyword
+                    "maxCrawledPlaces": min(limit, 30),  
                     "language": "vi",
                     "includeWebResults": False,
-                    "includeHistogram": False
+                    "includeHistogram": False,
+                    "maxImages": 1,  
+                    "maxReviews": 0  
                 }
                 
-                self.logger.info(f"💰 Running Google Maps Extractor")
+                self.logger.info(f"Running Google Maps Extractor (max {min(limit, 30)} places)")
                 
                 run = self.client.actor(actor_id).call(run_input=run_input)
                 dataset_id = run.get("defaultDatasetId")
@@ -124,17 +97,6 @@ class GoogleMapsApifyCollector(BaseCollector):
         platform_post_id: str, 
         limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """
-        Collect reviews for a Google Maps place.
-        Reviews are the "comments" for Google Maps.
-        
-        Args:
-            platform_post_id: Google Place ID (starts with "ChI...")
-            limit: Max reviews to collect
-            
-        Returns:
-            List of review data
-        """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
         
@@ -143,17 +105,18 @@ class GoogleMapsApifyCollector(BaseCollector):
         try:
             self.logger.info(f"💬 Collecting reviews for place: {platform_post_id}")
             
-            # Use Google Maps Reviews Scraper
             actor_id = "compass/Google-Maps-Reviews-Scraper"
             
             run_input = {
                 "placeIds": [platform_post_id],
-                "maxReviews": limit,
+                "maxReviews": min(limit, 100),
                 "reviewsSort": "newest",  # or "mostRelevant", "highestRanking", "lowestRanking"
-                "language": "vi"
+                "language": "vi",
+                "onlyWithText": True,  # Skip empty reviews
+                "skipEmptyReviews": True  # Quality filtering
             }
             
-            self.logger.info(f"💰 Running Google Maps Reviews Scraper")
+            self.logger.info(f"💰 Running Google Maps Reviews Scraper (max {limit} reviews)")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
@@ -187,7 +150,6 @@ class GoogleMapsApifyCollector(BaseCollector):
                 self.logger.warning("No place ID found")
                 return None
             
-            # Extract basic info
             place_data = {
                 "post_id": place_id,
                 "url": item.get("url") or f"https://www.google.com/maps/place/?q=place_id:{place_id}",
@@ -196,7 +158,7 @@ class GoogleMapsApifyCollector(BaseCollector):
                 "author_id": place_id,
                 "published_at": None,  # Places don't have publish dates
                 "like_count": 0,
-                "comment_count": item.get("totalScore", 0),  # Use review count
+                "comment_count": item.get("totalScore", 0),
                 "share_count": 0,
                 "view_count": 0,
                 "media_urls": [item.get("imageUrl")] if item.get("imageUrl") else [],
@@ -218,22 +180,25 @@ class GoogleMapsApifyCollector(BaseCollector):
     def _parse_review(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse Google Maps review into comment format"""
         try:
-            # Skip reviews without text content
             text = item.get("text") or ""
             if not text or not text.strip():
                 self.logger.debug(f"Skipping review without text content from {item.get('name', 'Unknown')}")
                 return None
             
+            word_count = len(text.split())
+            if word_count < 3:
+                self.logger.debug(f"Skipping short review ({word_count} words): {text[:50]}...")
+                return None
+            
             review_id = item.get("reviewId")
             if not review_id:
-                # Generate ID from author + text hash if no reviewId
                 import hashlib
                 author = item.get("name", "")
                 review_id = hashlib.md5(f"{author}{text}".encode()).hexdigest()
             
             review_data = {
                 "comment_id": review_id,
-                "text": text,  # Already validated as non-empty
+                "text": text,
                 "author_name": item.get("name", "Unknown"),
                 "author_id": item.get("reviewerId", ""),
                 "published_at": item.get("publishedAtDate"),
@@ -290,22 +255,20 @@ class GoogleMapsApifyCollector(BaseCollector):
             return None
         
         try:
-            # Try ISO format
             return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        except:
+        except (ValueError, AttributeError):
             pass
         
         try:
-            # Try other common formats
             from dateutil import parser
             return parser.parse(date_str)
-        except:
+        except Exception:
             return None
 
 
-def create_google_maps_apify_collector(apify_api_token: str) -> GoogleMapsApifyCollector:
-    """Factory function to create Google Maps collector"""
+def create_google_maps_collector(apify_api_token: str) -> GoogleMapsApifyCollector:
+    """Factory function to create Google Maps collector with Apify"""
     collector = GoogleMapsApifyCollector(apify_api_token)
     if collector.authenticate():
         return collector
-    raise RuntimeError("Failed to authenticate Google Maps Apify collector")
+    raise RuntimeError("Failed to authenticate Google Maps collector")

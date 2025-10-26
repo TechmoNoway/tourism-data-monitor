@@ -1,7 +1,3 @@
-"""
-TikTok Collector using Apify
-Apify provides scrapers that work without TikTok API approval
-"""
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
@@ -17,31 +13,14 @@ from app.schemas.comment import CommentCreate
 
 
 class TikTokApifyCollector(BaseCollector):
-    """
-    TikTok collector using Apify scraper
-    
-    Apify advantages:
-    - No TikTok API approval needed (saves 2-4 weeks)
-    - Can scrape public videos and hashtags
-    - More reliable than TikTok API for public data
-    - Handles rate limits and CAPTCHAs
-    """
-    
     def __init__(self, apify_api_token: str):
         super().__init__("tiktok")
         self.apify_token = apify_api_token
         self.client = None
         
     def authenticate(self, **credentials) -> bool:
-        """
-        Initialize Apify client
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             self.client = ApifyClient(self.apify_token)
-            # Test the token
             user_info = self.client.user().get()
             if user_info:
                 self.logger.info(f"Apify authenticated for user: {user_info.get('username', 'Unknown')}")
@@ -57,49 +36,29 @@ class TikTokApifyCollector(BaseCollector):
         location: Optional[str] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """
-        Collect TikTok videos using Apify scraper
-        
-        Uses: apify/tiktok-scraper or clockworks/tiktok-scraper
-        
-        Args:
-            keywords: List of hashtags or usernames to scrape
-            location: Location filter (optional, limited support)
-            limit: Maximum number of videos to collect
-            
-        Returns:
-            List of video data
-        """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
             
         all_videos = []
         
         try:
-            # Using clockworks/tiktok-scraper (more reliable)
-            # Alternative: apify/tiktok-scraper
-            actor_id = "clockworks/tiktok-scraper"
+           
+            actor_id = "OtzYfK1ndEGdwWFKQ"
             
-            # Build search queries - IMPROVED for better results
-            # Use short, popular hashtags and Vietnamese terms
             search_queries = []
             for keyword in keywords:
-                # Convert attraction names to TikTok-friendly hashtags
                 if keyword.startswith('#'):
-                    # Already a hashtag
                     search_queries.append({
                         "type": "hashtag",
-                        "input": keyword[1:]  # Remove #
+                        "input": keyword[1:]
                     })
                 elif keyword.startswith('@'):
                     # Profile/username
                     search_queries.append({
                         "type": "profile",
-                        "input": keyword[1:]  # Remove @
+                        "input": keyword[1:]
                     })
                 else:
-                    # Convert to hashtag (remove spaces, special chars)
-                    # E.g., "Bà Nà Hills" → "banahills"
                     hashtag = keyword.lower()\
                         .replace(' ', '')\
                         .replace('à', 'a').replace('á', 'a').replace('ả', 'a').replace('ã', 'a').replace('ạ', 'a')\
@@ -116,7 +75,6 @@ class TikTokApifyCollector(BaseCollector):
                         .replace('ư', 'u').replace('ừ', 'u').replace('ứ', 'u').replace('ử', 'u').replace('ữ', 'u').replace('ự', 'u')\
                         .replace('ỳ', 'y').replace('ý', 'y').replace('ỷ', 'y').replace('ỹ', 'y').replace('ỵ', 'y')
                     
-                    # Remove non-alphanumeric
                     hashtag = ''.join(c for c in hashtag if c.isalnum())
                     
                     if hashtag:
@@ -130,17 +88,26 @@ class TikTokApifyCollector(BaseCollector):
                         "input": keyword.replace(' ', '').lower()
                     })
             
-            # Run the actor
+            hashtags_list = []
+            for query in search_queries[:5]:
+                if query["type"] == "hashtag":
+                    hashtags_list.append(f"#{query['input']}")
+                elif query["type"] == "profile":
+                    hashtags_list.append(f"@{query['input']}")
+            
             run_input = {
-                "searchQueries": search_queries[:5],  # Limit to 5 queries
-                "resultsPerPage": min(limit, 100),
-                "maxProfilesPerQuery": 1,
+                "hashtags": hashtags_list, 
+                "resultsPerPage": min(limit, 50),
                 "shouldDownloadVideos": False,
                 "shouldDownloadCovers": False,
-                "shouldDownloadSubtitles": False
+                "shouldDownloadSubtitles": False,
+                "shouldDownloadSlideshowImages": False
             }
             
-            self.logger.info(f"Starting Apify actor {actor_id} for {len(search_queries)} queries...")
+            self.logger.info(f"🚀 Starting Apify actor {actor_id}")
+            self.logger.info(f"📌 Hashtags: {', '.join(hashtags_list)}")
+            self.logger.info(f"📊 Max results: {min(limit, 50)} per hashtag")
+            
             run = self.client.actor(actor_id).call(run_input=run_input)
             
             # Fetch results
@@ -177,16 +144,10 @@ class TikTokApifyCollector(BaseCollector):
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Collect comments for a specific TikTok video using Apify
+        Collect comments for a TikTok video using specialized Comments Scraper
         
-        Note: Comment scraping is limited on TikTok due to anti-bot measures
-        
-        Args:
-            video_url: TikTok video URL
-            limit: Maximum number of comments to collect
-            
-        Returns:
-            List of comment data
+        Uses: clockworks/tiktok-comments-scraper (18K users, 4.8 rating)
+        This actor is specifically designed for extracting TikTok comments
         """
         if not self.client:
             raise RuntimeError("Apify client not authenticated")
@@ -194,53 +155,62 @@ class TikTokApifyCollector(BaseCollector):
         all_comments = []
         
         try:
-            # TikTok comments scraper
-            actor_id = "clockworks/tiktok-scraper"
+            # Use specialized TikTok Comments Scraper actor
+            # Much better than the general scraper for comments specifically
+            actor_id = "clockworks/tiktok-comments-scraper"
             
+            # Input format for comments scraper - expects video URLs
+            # NOTE: Field name is "postURLs" (capital U) not "postUrls"
             run_input = {
-                "searchQueries": [{
-                    "type": "video",
-                    "input": video_url
-                }],
-                "resultsPerPage": min(limit, 100),
-                "shouldDownloadVideos": False,
-                "shouldDownloadCovers": False
+                "postURLs": [video_url],  # Must be "postURLs" with capital U
+                "maxComments": min(limit, 500),  # Max comments to collect (up to 500)
+                "maxReplies": 10,  # Increased from 5 to 10 replies per comment for better thread context
+                "commentsPerPage": 30,  # How many to load per page
             }
             
-            self.logger.info(f"Collecting comments for video: {video_url}")
+            self.logger.info(f"💬 Collecting comments using specialized Comments Scraper")
+            self.logger.info(f"📹 Video: {video_url}")
+            self.logger.info(f"🎯 Target: {min(limit, 500)} comments")
+            
             run = self.client.actor(actor_id).call(run_input=run_input)
             
-            # Fetch results - TikTok API might include comments in video data
+            # Process results from comments scraper
             for item in self.client.dataset(run["defaultDatasetId"]).iterate_items():
-                # Check if comments are included
-                if item.get('comments'):
-                    for comment in item['comments']:
-                        all_comments.append({
-                            'comment_id': comment.get('id') or comment.get('cid'),
-                            'video_id': item.get('id'),
-                            'text': comment.get('text', ''),
-                            'author_name': comment.get('user', {}).get('uniqueId', 'Unknown'),
-                            'author_id': comment.get('user', {}).get('id', ''),
-                            'create_time': comment.get('createTime'),
-                            'like_count': comment.get('diggCount', 0),
-                            'reply_count': comment.get('replyCommentTotal', 0)
-                        })
-                        
-                        if len(all_comments) >= limit:
-                            break
+                # Comments scraper returns comments directly, not nested in video data
+                comment_data = {
+                    'comment_id': item.get('id') or item.get('cid'),
+                    'video_id': item.get('videoId') or video_url.split('/')[-1],
+                    'text': item.get('text', ''),
+                    'author_name': item.get('uniqueId') or item.get('nickname', 'Unknown'),
+                    'author_id': item.get('authorId', ''),
+                    'create_time': item.get('createTime') or item.get('createTimeISO'),
+                    'like_count': item.get('diggCount', 0),
+                    'reply_count': item.get('replyCommentTotal', 0)
+                }
+                
+                all_comments.append(comment_data)
+                
+                if len(all_comments) >= limit:
+                    break
                             
         except Exception as e:
-            self.logger.error(f"Error collecting TikTok comments via Apify: {str(e)}")
-            self.logger.warning("Note: TikTok comment scraping is limited. Consider focusing on video data.")
+            self.logger.error(f"❌ Error collecting TikTok comments: {str(e)}")
+            self.logger.info("💡 Tip: Make sure the video URL is valid and public")
+            import traceback
+            self.logger.debug(traceback.format_exc())
             
-        self.logger.info(f"Collected {len(all_comments)} comments via Apify")
+        if all_comments:
+            self.logger.info(f"✅ Collected {len(all_comments)} comments from TikTok")
+        else:
+            self.logger.warning(f"⚠️  No comments collected for {video_url}")
+            self.logger.info("💡 This could be because:")
+            self.logger.info("   1. Video has no comments yet")
+            self.logger.info("   2. Comments are disabled for this video")
+            self.logger.info("   3. TikTok's anti-bot measures blocked the scraper")
+            
         return all_comments[:limit]
     
     def _convert_raw_post(self, raw_post: Dict[str, Any], attraction_id: int) -> SocialPostCreate:
-        """
-        Convert Apify TikTok video data to SocialPostCreate schema
-        """
-        # Parse create time
         created_time = None
         if raw_post.get('create_time'):
             try:
@@ -251,7 +221,6 @@ class TikTokApifyCollector(BaseCollector):
             except Exception:
                 created_time = datetime.utcnow()
         
-        # Build content from description and hashtags
         content = raw_post.get('description', '')
         if raw_post.get('hashtags'):
             hashtags_str = ' '.join([f"#{tag}" for tag in raw_post['hashtags']])
@@ -269,10 +238,6 @@ class TikTokApifyCollector(BaseCollector):
         )
     
     def _convert_raw_comment(self, raw_comment: Dict[str, Any], post_id: int) -> CommentCreate:
-        """
-        Convert Apify TikTok comment data to CommentCreate schema
-        """
-        # Parse create time
         created_time = None
         if raw_comment.get('create_time'):
             try:
@@ -298,19 +263,11 @@ class TikTokApifyCollector(BaseCollector):
 
 
 # Factory function
-def create_tiktok_apify_collector(apify_token: str) -> TikTokApifyCollector:
-    """
-    Create and authenticate a TikTok Apify collector
-    
-    Args:
-        apify_token: Apify API token
-        
-    Returns:
-        Authenticated TikTokApifyCollector instance
-    """
+def create_tiktok_collector(apify_token: str) -> TikTokApifyCollector:
+    """Factory function to create TikTok collector with Apify"""
     collector = TikTokApifyCollector(apify_token)
     
     if not collector.authenticate():
-        logging.warning("TikTok Apify collector created but authentication failed")
+        logging.warning("TikTok collector created but authentication failed")
         
     return collector

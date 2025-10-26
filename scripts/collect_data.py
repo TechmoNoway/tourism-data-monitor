@@ -96,9 +96,8 @@ async def collect_for_attraction_multi_platform(
         try:
             await pipeline.collect_for_attraction(
                 attraction_id=attraction_id,
-                platform=platform,
-                max_posts=TARGET_POSTS_PER_ATTRACTION,
-                max_comments=20
+                platforms=[platform], 
+                limit_per_platform=50  
             )
             
             new_posts = db.query(SocialPost).filter(
@@ -141,7 +140,12 @@ async def collect_for_attraction_multi_platform(
 async def run_collection(province_names: List[str] = None, attractions_per_province: int = 3, all_attractions: bool = False):
     db = next(get_db())
     
-    pipeline = create_data_pipeline()
+    from app.core.config import settings
+    
+    pipeline = create_data_pipeline(
+        apify_api_token=settings.APIFY_API_TOKEN,
+        youtube_api_key=settings.YOUTUBE_API_KEY
+    )
     
     print("\n" + "="*70)
     print("MULTI-PLATFORM TOURISM DATA COLLECTION")
