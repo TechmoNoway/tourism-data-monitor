@@ -383,15 +383,6 @@ python -c "from app.database.connection import init_db; init_db()"
 
 ---
 
-## 📞 Support
-
-- **Documentation**: Check `docs/` folder
-- **API Docs**: http://localhost:8000/docs (when server running)
-- **Apify Support**: support@apify.com
-- **Issues**: Create GitHub issue (if repo exists)
-
----
-
 ## 🤝 Contributing
 
 Contributions welcome! Please:
@@ -415,39 +406,3 @@ Contributions welcome! Please:
 - **Google** - For YouTube and Maps APIs
 - **FastAPI** - For excellent web framework
 - **SQLAlchemy** - For powerful ORM
-
----
-
-## 📈 Roadmap
-
-### Phase 1: Data Collection ✅ (COMPLETE)
-- [x] YouTube collector
-- [x] Google Reviews collector
-- [x] Facebook collector (Apify)
-- [x] TikTok collector (Apify)
-- [x] Data pipeline
-- [x] Scheduler
-
-### Phase 2: NLP Analysis 🔄 (IN PROGRESS)
-- [ ] PhoBERT sentiment analysis
-- [ ] Bot detection
-- [ ] Topic modeling
-- [ ] Trend analysis
-
-### Phase 3: Visualization 📋 (PLANNED)
-- [ ] Web dashboard
-- [ ] Real-time charts
-- [ ] Report generation
-- [ ] Export to Excel/PDF
-
-### Phase 4: Advanced Features 📋 (PLANNED)
-- [ ] Alert system
-- [ ] Competitor analysis
-- [ ] Recommendation engine
-- [ ] API rate limit optimization
-
----
-
-**Built with ❤️ for Vietnamese Tourism**
-
-**Start collecting data in 5 minutes**: [docs/APIFY_QUICKSTART.md](docs/APIFY_QUICKSTART.md)

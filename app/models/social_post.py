@@ -26,7 +26,6 @@ class SocialPost(Base):
     scraped_at = Column(DateTime, default=datetime.now(timezone.utc))
     last_updated = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
-    # relationships
     attraction = relationship("TouristAttraction", back_populates="posts")
     comments = relationship("Comment", back_populates="post")
 

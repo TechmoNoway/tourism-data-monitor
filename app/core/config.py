@@ -2,7 +2,6 @@ from typing import ClassVar, Optional
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
-# Import Facebook Best Pages configuration
 try:
     from app.core.facebook_best_pages import FACEBOOK_BEST_PAGES as FB_BEST_PAGES_FULL
 except ImportError:
@@ -39,16 +38,12 @@ class Settings(BaseSettings):
     FACEBOOK_COMMENTS_PER_POST: int = 50
     FACEBOOK_USE_BEST_PAGES: bool = True  # Use validated high-engagement pages
     
-    # Facebook Best Pages (from Smart Page Selection validation)
-    # Full configuration imported from app.core.facebook_best_pages
     FACEBOOK_BEST_PAGES: ClassVar[dict] = FB_BEST_PAGES_FULL
 
-    # Scheduler Settings
     SCHEDULER_ENABLED: bool = False
     DAILY_COLLECTION_HOUR: int = 2
     DAILY_COLLECTION_MINUTE: int = 0
 
-    # CORS
     CORS_ORIGINS: list[str] = []
     
     @field_validator('CORS_ORIGINS', mode='before')
@@ -60,7 +55,6 @@ class Settings(BaseSettings):
             return v
         return []
 
-    # Provinces
     PROVINCES: ClassVar[dict] = {
         "lam_dong": {"name": "Lâm Đồng", "code": "LD", "city": "Đà Lạt"},
         "da_nang": {"name": "Đà Nẵng", "code": "DN", "city": "Đà Nẵng"},
@@ -70,7 +64,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
-        extra = "ignore"  # Ignore extra fields in .env
+        extra = "ignore" 
 
 settings = Settings()
 

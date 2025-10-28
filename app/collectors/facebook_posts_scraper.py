@@ -194,6 +194,100 @@ class FacebookPostsScraper(BaseCollector):
         
         return all_comments
     
+    async def _scrape_from_search(self, search_keywords: List[str], limit: int) -> List[Dict[str, Any]]:
+        posts = []
+        
+        if not search_keywords:
+            return posts
+        
+        try:
+            actor_id = "TMBawM4LZpKN15DZX"
+            
+            query = " ".join(search_keywords)
+            
+            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}'")
+            
+            run_input = {
+                "query": query,
+                "maxPosts": min(limit, 20),
+                "searchType": "top"  
+            }
+            
+            self.logger.info("💰 Running Apify Posts Search (keyword-mode)")
+            
+            run = self.client.actor(actor_id).call(run_input=run_input)
+            dataset_id = run.get("defaultDatasetId")
+            
+            if not dataset_id:
+                self.logger.error("❌ No dataset_id returned from Posts Search")
+                return posts
+            
+            items = self.client.dataset(dataset_id).list_items().items
+            self.logger.info(f"📊 Posts Search returned {len(items)} items")
+            
+            for i, item in enumerate(items, 1):
+                try:
+                    post = self._parse_search_post(item)
+                    if post:
+                        self.logger.info(f"✅ Parsed search result {i}: {post.get('post_id', 'unknown')}")
+                        posts.append(post)
+                    else:
+                        self.logger.warning(f"❌ Failed to parse search result {i}")
+                except Exception as e:
+                    self.logger.warning(f"Error parsing search result {i}: {e}")
+                    continue
+            
+            self.logger.info(f"✅ Successfully collected {len(posts)} posts from search")
+            
+        except Exception as e:
+            self.logger.error(f"Error in search scraping: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+        
+        return posts
+    
+    def _parse_search_post(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Parse post from facebook-posts-search actor
+        Format is different from posts-scraper actor
+        """
+        try:
+            post_id = item.get("postId", "")
+            if not post_id:
+                self.logger.warning("Search result missing postId")
+                return None
+            
+            timestamp_ms = item.get("timestamp")
+            published_at = None
+            if timestamp_ms:
+                try:
+                    published_at = datetime.fromtimestamp(timestamp_ms / 1000)
+                except Exception:
+                    pass
+            
+            author = item.get("author", {})
+            
+            post = {
+                "post_id": str(post_id),
+                "url": item.get("url", ""),
+                "text": item.get("postText", ""),
+                "author_name": author.get("name", "Unknown"),
+                "author_id": author.get("id", ""),
+                "author_url": author.get("profileUrl", ""),
+                "like_count": item.get("reactionsCount", 0),
+                "comment_count": item.get("commentsCount", 0),
+                "published_at": published_at,
+                "reactions": item.get("reactions", {}),
+                "comments": [],  # Will be filled by comment scraper
+                "source": "search"  # Mark as search result
+            }
+            
+            return post
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing search post: {e}")
+            return None
+    
     async def _scrape_from_pages(self, page_urls: List[str], limit: int) -> List[Dict[str, Any]]:
         posts = []
 
@@ -203,19 +297,18 @@ class FacebookPostsScraper(BaseCollector):
         try:
             actor_id = "apify/facebook-posts-scraper"
 
-            # Increased from 2 to 3 pages for more coverage
             page_urls = page_urls[:3]
 
             self.logger.info(f"📍 Scraping {len(page_urls)} Facebook pages using Posts Scraper")
 
             run_input = {
                 "startUrls": [{"url": url} for url in page_urls],
-                "resultsLimit": min(limit, 50),  # Increased from default, max 50 posts per page
-                "maxComments": 500,  # Increased from 100 to 500 for better data
-                "maxCommentsPerPost": 100,  # Keep 100 per post (balanced)
+                "resultsLimit": min(limit, 50),
+                "maxComments": 500, 
+                "maxCommentsPerPost": 100,
                 "commentsMode": "RANKED_RELEVANT",
                 "scrapePostComments": True,
-                "scrapeReactions": False,  # Skip reactions to save cost, focus on comments
+                "scrapeReactions": False,
                 "proxyConfiguration": {"useApifyProxy": True},
             }
 
@@ -248,9 +341,7 @@ class FacebookPostsScraper(BaseCollector):
                     posts.append(post)
                 else:
                     self.logger.warning(f"❌ Failed to parse item {i}")
-                    # If parser couldn't parse a post, check if this is page metadata
                     if any(k in item for k in ("pageUrl", "pageName", "facebookUrl", "pageId", "facebookId")):
-                        # Build a lightweight page metadata record so tests can validate page discovery
                         page_meta = {
                             "is_page_meta": True,
                             "page_name": item.get("pageName") or item.get("title") or item.get("page_name"),
@@ -266,11 +357,9 @@ class FacebookPostsScraper(BaseCollector):
 
         except Exception as e:
             msg = str(e)
-            # Detect common Apify resource/memory limit error and surface a friendly message
             if "exceed the memory limit" in msg or "memory limit" in msg:
                 self.logger.error("❌ Apify memory limit prevented launching the actor run.")
                 self.logger.error("Action needed: free up actor/build memory in your Apify account or upgrade the plan. See: https://console.apify.com/billing/subscription")
-                # Return empty so the pipeline can continue (caller should handle empty result)
                 return posts
 
             self.logger.error(f"Error scraping pages: {msg}")
@@ -280,62 +369,103 @@ class FacebookPostsScraper(BaseCollector):
         return posts
     
     async def _scrape_from_search(self, keywords: List[str], limit: int) -> List[Dict[str, Any]]:
-        """Scrape posts using hashtag/keyword search"""
         posts = []
+        
+        if not keywords:
+            return posts
+        
         try:
-            # Build hashtag URLs
-            search_urls = []
-            for kw in keywords:
-                if kw.startswith("#"):
-                    # Hashtag search
-                    tag = kw.replace("#", "")
-                    search_urls.append(f"https://www.facebook.com/hashtag/{tag}")
-                else:
-                    # Keyword search (may not work well)
-                    self.logger.warning(f"Keyword search may fail: {kw}")
-                    query = kw.replace(' ', '%20')
-                    search_urls.append(f"https://www.facebook.com/search/posts/?q={query}")
+            actor_id = "TMBawM4LZpKN15DZX"  
             
-            if not search_urls:
-                return posts
-                
-            self.logger.info(f"🔍 Searching {len(search_urls)} hashtags/keywords")
+            query = " ".join(keywords)
             
-            # Use facebook-posts-scraper
-            actor_id = "apify/facebook-posts-scraper"
+            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}'")
             
             run_input = {
-                "startUrls": [{"url": url} for url in search_urls],
-                "resultsLimit": limit,
-                "maxComments": 50,
-                "maxCommentsPerPost": 50,
-                "commentsMode": "RANKED_RELEVANT",
-                "scrapeReactions": False,
-                "proxyConfiguration": {
-                    "useApifyProxy": True
-                }
+                "query": query,
+                "maxPosts": min(limit, 20),
+                "searchType": "top" 
             }
+            
+            self.logger.info("💰 Running Apify Posts Search (keyword-mode)")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
             
-            if dataset_id:
-                items = self.client.dataset(dataset_id).list_items().items
-                for item in items:
-                    post = self._parse_apify_post(item)
-                    if post:
-                        posts.append(post)
-                        
-        except Exception as e:
-            self.logger.error(f"Error searching: {str(e)}")
+            if not dataset_id:
+                self.logger.error("❌ No dataset_id returned from Posts Search")
+                return posts
             
+            items = self.client.dataset(dataset_id).list_items().items
+            self.logger.info(f"📊 Posts Search returned {len(items)} items")
+            
+            for i, item in enumerate(items, 1):
+                try:
+                    post = self._parse_search_post(item)
+                    if post:
+                        self.logger.info(f"✅ Parsed search result {i}: {post.get('post_id', 'unknown')}")
+                        posts.append(post)
+                    else:
+                        self.logger.warning(f"❌ Failed to parse search result {i}")
+                except Exception as e:
+                    self.logger.warning(f"Error parsing search result {i}: {e}")
+                    continue
+            
+            self.logger.info(f"✅ Successfully collected {len(posts)} posts from search")
+            
+        except Exception as e:
+            self.logger.error(f"Error in search scraping: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+        
         return posts
+    
+    def _parse_search_post(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Parse post from facebook-posts-search actor (TMBawM4LZpKN15DZX)
+        Format is different from posts-scraper actor
+        """
+        try:
+            post_id = item.get("postId", "")
+            if not post_id:
+                self.logger.warning("Search result missing postId")
+                return None
+            
+            # Convert timestamp (milliseconds) to datetime
+            timestamp_ms = item.get("timestamp")
+            published_at = None
+            if timestamp_ms:
+                try:
+                    published_at = datetime.fromtimestamp(timestamp_ms / 1000)
+                except Exception:
+                    pass
+            
+            author = item.get("author", {})
+            
+            post = {
+                "post_id": str(post_id),
+                "url": item.get("url", ""),
+                "text": item.get("postText", ""),
+                "author_name": author.get("name", "Unknown"),
+                "author_id": author.get("id", ""),
+                "author_url": author.get("profileUrl", ""),
+                "like_count": item.get("reactionsCount", 0),
+                "comment_count": item.get("commentsCount", 0),
+                "published_at": published_at,
+                "reactions": item.get("reactions", {}),
+                "comments": [],  # Will be filled by comment scraper
+                "source": "search"  # Mark as search result for tracking
+            }
+            
+            return post
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing search post: {e}")
+            return None
     
     def _parse_apify_post(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse Apify facebook-pages-scraper and facebook-posts-scraper output"""
         try:
-            # Extract post data - try multiple field names
-            # facebook-pages-scraper uses different field names than facebook-posts-scraper
             post_id = (item.get("postId") or 
                       item.get("id") or 
                       item.get("post_id") or
@@ -345,14 +475,12 @@ class FacebookPostsScraper(BaseCollector):
                 self.logger.warning(f"No post ID found in item. Available keys: {list(item.keys())}")
                 return None
             
-            # Text content - multiple possible field names
             text = (item.get("text") or 
                    item.get("content") or 
                    item.get("post_text") or
                    item.get("message") or
                    "")
             
-            # Author info
             author = (item.get("authorName") or 
                      item.get("author", {}).get("name") if isinstance(item.get("author"), dict) else item.get("author") or
                      item.get("page_name") or
@@ -362,13 +490,11 @@ class FacebookPostsScraper(BaseCollector):
                         item.get("author", {}).get("id") if isinstance(item.get("author"), dict) else None or
                         item.get("page_id"))
             
-            # URL
             url = (item.get("postUrl") or 
                   item.get("url") or 
                   item.get("post_url") or
                   item.get("link"))
             
-            # Media URLs - ensure it's a list
             media_urls = item.get("images", []) or item.get("media", []) or []
             if not isinstance(media_urls, list):
                 media_urls = []
@@ -386,12 +512,11 @@ class FacebookPostsScraper(BaseCollector):
                 "view_count": item.get("views", 0) or item.get("view_count", 0) or 0,
                 "media_urls": media_urls,
                 "post_type": item.get("postType", "post") or item.get("type", "post"),
-                "comments": []  # Will be populated below
+                "comments": [],
+                "source": "page"
             }
             
-            # Extract comments if available
             comments_data = item.get("postComments", []) or item.get("comments", [])
-            # Ensure comments_data is a list (not int or other type)
             if not isinstance(comments_data, list):
                 comments_data = []
             
@@ -426,12 +551,6 @@ class FacebookPostsScraper(BaseCollector):
         post_id: str, 
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Comments are already collected with posts
-        This method returns cached comments or re-fetches if needed
-        """
-        # For this scraper, comments come with posts
-        # If you need to fetch additional comments, implement separate logic
         self.logger.info("Comments are collected with posts in this scraper")
         return []
     
@@ -470,19 +589,16 @@ class FacebookPostsScraper(BaseCollector):
         )
     
     def _parse_datetime(self, date_str: Optional[str]) -> Optional[datetime]:
-        """Parse datetime from various formats"""
         if not date_str:
             return None
         
         try:
-            # Try ISO format
             return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        except:
+        except Exception:
             pass
         
         try:
-            # Try other common formats
             from dateutil import parser
             return parser.parse(date_str)
-        except:
+        except Exception:
             return None

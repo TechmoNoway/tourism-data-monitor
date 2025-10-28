@@ -21,7 +21,6 @@ class TouristAttraction(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
-    # relationships
     province = relationship("Province", back_populates="attractions")
     posts = relationship("SocialPost", back_populates="attraction")
     comments = relationship("Comment", back_populates="attraction")

@@ -3,7 +3,6 @@ from app.api.endpoints import provinces, attractions, collection
 
 router = APIRouter()
 
-# Include các endpoint routes
 router.include_router(provinces.router, prefix="/provinces", tags=["Provinces"])
 router.include_router(attractions.router, prefix="/attractions", tags=["Tourist Attractions"])
 router.include_router(collection.router, tags=["Data Collection"])

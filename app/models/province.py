@@ -14,7 +14,6 @@ class Province(Base):
     main_city = Column(String(100))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
-    # relationships
     attractions = relationship("TouristAttraction", back_populates="province")
     
 

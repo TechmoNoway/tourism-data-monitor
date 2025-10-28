@@ -1,12 +1,3 @@
-"""
-Facebook Best Pages Configuration
-Based on test_facebook_full_smart.py results from 2025-10-21
-
-This configuration contains the best performing Facebook pages for each location,
-validated through Smart Page Selection strategy with actual comment collection data.
-"""
-
-# Best pages configuration based on actual test results
 FACEBOOK_BEST_PAGES = {
     "Bà Nà Hills": {
         "location_id": "ba_na_hills",
@@ -124,37 +115,22 @@ PRODUCTION_CONFIG = {
 }
 
 def get_best_page_url(location_name):
-    """Get the best page URL for a location"""
     if location_name in FACEBOOK_BEST_PAGES:
         return FACEBOOK_BEST_PAGES[location_name]["best_page"]["url"]
     return None
 
 def get_all_best_pages():
-    """Get all best pages as a simple dict mapping location to URL"""
     return {
         location: config["best_page"]["url"]
         for location, config in FACEBOOK_BEST_PAGES.items()
     }
 
 def get_expected_comments_per_post(location_name):
-    """Get expected comments per post for a location (for capacity planning)"""
     if location_name in FACEBOOK_BEST_PAGES:
         return FACEBOOK_BEST_PAGES[location_name]["best_page"]["actual_avg_comments"]
     return 0
 
 def estimate_collection_cost(num_posts=20, comments_per_post=50):
-    """
-    Estimate cost for collection based on validation data
-    
-    Args:
-        num_posts: Number of posts to collect per location
-        comments_per_post: Max comments to collect per post
-        
-    Returns:
-        dict with cost breakdown
-    """
-    # From validation: 7.0 avg comments/post across all locations
-    # But use actual expected comments for more accurate estimate
     total_locations = len(FACEBOOK_BEST_PAGES)
     expected_comments_per_location = {
         "Bà Nà Hills": 6.1 * num_posts,

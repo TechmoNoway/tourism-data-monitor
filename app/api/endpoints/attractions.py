@@ -25,7 +25,6 @@ async def get_attractions(
     limit: int = Query(100, le=1000, description="Số lượng kết quả tối đa"),
     db: Session = Depends(get_db)
 ):
-    """Lấy danh sách khu du lịch với các bộ lọc"""
     service = TouristAttractionService(db)
     
     attractions = service.search_attractions(
@@ -46,7 +45,6 @@ async def get_popular_attractions(
     limit: int = Query(10, le=50, description="Số lượng kết quả"),
     db: Session = Depends(get_db)
 ):
-    """Lấy các khu du lịch phổ biến (rating cao, nhiều review)"""
     service = TouristAttractionService(db)
     return service.get_popular_attractions(province_id=province_id, limit=limit)
 
@@ -56,14 +54,12 @@ async def get_attraction_categories(
     province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
     db: Session = Depends(get_db)
 ):
-    """Lấy danh sách các danh mục khu du lịch có sẵn"""
     service = TouristAttractionService(db)
     return service.get_categories(province_id=province_id)
 
 
 @router.get("/{attraction_id}", response_model=TouristAttractionWithProvince)
 async def get_attraction(attraction_id: int, db: Session = Depends(get_db)):
-    """Lấy thông tin chi tiết một khu du lịch"""
     service = TouristAttractionService(db)
     attraction = service.get_attraction_with_province(attraction_id)
     
@@ -78,7 +74,6 @@ async def create_attraction(
     attraction: TouristAttractionCreate, 
     db: Session = Depends(get_db)
 ):
-    """Tạo khu du lịch mới"""
     # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
@@ -95,7 +90,6 @@ async def update_attraction(
     update_data: TouristAttractionUpdate,
     db: Session = Depends(get_db)
 ):
-    """Cập nhật thông tin khu du lịch"""
     # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
@@ -108,7 +102,6 @@ async def update_attraction(
 
 @router.delete("/{attraction_id}", response_model=ApiResponse)
 async def deactivate_attraction(attraction_id: int, db: Session = Depends(get_db)):
-    """Vô hiệu hóa khu du lịch (soft delete)"""
     # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
@@ -129,7 +122,6 @@ async def update_attraction_rating(
     review_count: int = Query(..., ge=0, description="Tổng số review"),
     db: Session = Depends(get_db)
 ):
-    """Cập nhật rating và số lượng review của khu du lịch"""
     service = TouristAttractionService(db)
     
     updated_attraction = service.update_rating(attraction_id, rating, review_count)
@@ -145,6 +137,5 @@ async def get_attractions_by_category(
     province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
     db: Session = Depends(get_db)
 ):
-    """Lấy khu du lịch theo danh mục cụ thể"""
     service = TouristAttractionService(db)
     return service.get_attractions_by_category(category, province_id)

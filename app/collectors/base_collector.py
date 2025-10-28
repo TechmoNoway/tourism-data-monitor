@@ -128,7 +128,7 @@ class BaseCollector(ABC):
             Includes BOTH new posts and existing posts, enabling comment collection for all.
         """
         db = next(get_db())
-        post_id_mapping = {}  # platform_post_id -> db_post_id
+        post_id_mapping = {}
 
         try:
             for raw_post in raw_posts:
@@ -144,7 +144,6 @@ class BaseCollector(ABC):
                 )
 
                 if existing_post:
-                    # Include existing post in mapping so we can collect comments for it
                     post_id_mapping[post_data.platform_post_id] = existing_post.id
                     self.logger.info(
                         f"Post {post_data.platform_post_id} already exists (ID={existing_post.id}), will collect comments"
