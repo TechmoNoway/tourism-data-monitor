@@ -237,7 +237,7 @@ class TikTokApifyCollector(BaseCollector):
             post_url=raw_post.get('url', '')
         )
     
-    def _convert_raw_comment(self, raw_comment: Dict[str, Any], post_id: int) -> CommentCreate:
+    def _convert_raw_comment(self, raw_comment: Dict[str, Any], post_id: int, attraction_id: int) -> CommentCreate:
         created_time = None
         if raw_comment.get('create_time'):
             try:
@@ -252,7 +252,7 @@ class TikTokApifyCollector(BaseCollector):
             platform=PlatformEnum.TIKTOK,
             platform_comment_id=str(raw_comment.get('comment_id', '')),
             post_id=post_id,
-            attraction_id=raw_comment.get('attraction_id', 0),
+            attraction_id=attraction_id,
             content=self._clean_text(raw_comment.get('text', '')),
             author=raw_comment.get('author_name', 'Unknown'),
             author_id=raw_comment.get('author_id', ''),

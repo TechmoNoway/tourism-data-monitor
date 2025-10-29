@@ -32,11 +32,11 @@ class Settings(BaseSettings):
     DEFAULT_COMMENTS_LIMIT: int = 100
     MAX_COLLECTION_RETRIES: int = 3
 
-    # Facebook Collection Settings (validated 2025-10-21)
+    # Facebook Collection Settings
     FACEBOOK_COLLECTION_ENABLED: bool = True
     FACEBOOK_POSTS_PER_LOCATION: int = 20
-    FACEBOOK_COMMENTS_PER_POST: int = 50
-    FACEBOOK_USE_BEST_PAGES: bool = True  # Use validated high-engagement pages
+    FACEBOOK_COMMENTS_PER_POST: int = 150  
+    FACEBOOK_USE_BEST_PAGES: bool = False
     
     FACEBOOK_BEST_PAGES: ClassVar[dict] = FB_BEST_PAGES_FULL
 

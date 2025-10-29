@@ -217,3 +217,4 @@ __marimo__/
 
 .env.example
 note
+scripts/clear_database.py

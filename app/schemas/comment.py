@@ -28,6 +28,9 @@ class CommentBase(BaseModel):
 class CommentCreate(CommentBase):
     post_id: int
     attraction_id: int
+    quality_tier: Optional[str] = None
+    quality_score: Optional[float] = None  
+    is_meaningful: Optional[bool] = True    
 
 class CommentUpdate(BaseModel):
     content: Optional[str] = None

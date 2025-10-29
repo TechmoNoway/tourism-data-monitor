@@ -108,21 +108,17 @@ class FacebookPostsScraper(BaseCollector):
         all_posts = []
         
         try:
-            page_urls = [k for k in keywords if k.startswith("http")]
             search_keywords = [k for k in keywords if not k.startswith("http")]
             
-            # Strategy 1: Scrape from pages 
-            if page_urls:
-                posts = await self._scrape_from_pages(page_urls, limit)
-                all_posts.extend(posts)
-                self.logger.info(f"✓ Got {len(posts)} posts from pages")
+            if not search_keywords:
+                self.logger.warning("No search keywords provided, returning empty list")
+                return all_posts
             
-            # Strategy 2: Search if not enough posts
-            if len(all_posts) < limit and search_keywords:
-                remaining = limit - len(all_posts)
-                search_posts = await self._scrape_from_search(search_keywords[:3], remaining)
-                all_posts.extend(search_posts)
-                self.logger.info(f"✓ Got {len(search_posts)} posts from search")
+            # Use search-only strategy (proven 50x more effective)
+            self.logger.info(f"🔍 Using SEARCH-ONLY strategy with keywords: {search_keywords}")
+            search_posts = await self._scrape_from_search(search_keywords[:3], limit)
+            all_posts.extend(search_posts)
+            self.logger.info(f"✓ Got {len(search_posts)} posts from search")
             
         except Exception as e:
             self.logger.error(f"Error collecting Facebook posts: {str(e)}")
@@ -377,9 +373,14 @@ class FacebookPostsScraper(BaseCollector):
         try:
             actor_id = "TMBawM4LZpKN15DZX"  
             
-            query = " ".join(keywords)
+            # Use FIRST keyword only and truncate to 30 chars max!
+            query = keywords[0][:30] if keywords else ""
             
-            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}'")
+            if not query:
+                self.logger.warning("Empty query after truncation")
+                return posts
+            
+            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}' (max 30 chars)")
             
             run_input = {
                 "query": query,

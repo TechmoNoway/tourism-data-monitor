@@ -18,8 +18,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-TARGET_POSTS_PER_ATTRACTION = 8
-TARGET_COMMENTS_PER_ATTRACTION = 40
+TARGET_POSTS_PER_ATTRACTION = 24  
+TARGET_COMMENTS_PER_ATTRACTION = 120 
 PLATFORMS_PRIORITY = ['facebook', 'google_maps', 'youtube', 'tiktok']
 
 

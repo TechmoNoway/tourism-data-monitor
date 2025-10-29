@@ -10,6 +10,7 @@ from app.models.analysis_log import AnalysisLog
 from app.schemas.post import SocialPostCreate
 from app.schemas.comment import CommentCreate
 from app.collectors.relevance_filter import RelevanceFilter, PlatformKeywordOptimizer
+from app.collectors.comment_filter import CommentFilter
 
 
 class BaseCollector(ABC):
@@ -28,6 +29,7 @@ class BaseCollector(ABC):
         self.logger = logging.getLogger(f"collector.{platform_name}")
         self.relevance_filter = RelevanceFilter(min_relevance_score=min_relevance_score)
         self.keyword_optimizer = PlatformKeywordOptimizer()
+        self.comment_filter = CommentFilter(min_length=3, min_chars=10)
         self.min_relevance_score = min_relevance_score
 
     @abstractmethod
@@ -173,10 +175,29 @@ class BaseCollector(ABC):
     ) -> List[int]:
         db = next(get_db())
         created_comments = []
+        
+        # NEW APPROACH: Store ALL comments, but mark quality tier
+        # Don't filter - we need all comments for engagement metrics
+        quality_stats = {'high': 0, 'medium': 0, 'low': 0, 'spam': 0}
 
         try:
             for raw_comment in raw_comments:
+                # Assess quality (but don't filter)
+                text = raw_comment.get('text', '')
+                author = raw_comment.get('author_name', '')
+                quality_tier, quality_score = \
+                    self.comment_filter.assess_comment_quality(text, author)
+                
+                quality_stats[quality_tier] += 1
+                
+                # Convert to comment data
                 comment_data = self._convert_raw_comment(raw_comment, post_id, attraction_id)
+                
+                # Add quality assessment fields
+                comment_data_dict = comment_data.dict()
+                comment_data_dict['quality_tier'] = quality_tier
+                comment_data_dict['quality_score'] = quality_score
+                comment_data_dict['is_meaningful'] = quality_tier in ['high', 'medium']
 
                 existing_comment = (
                     db.query(Comment)
@@ -193,16 +214,26 @@ class BaseCollector(ABC):
                     )
                     continue
 
-                db_comment = Comment(**comment_data.dict())
+                db_comment = Comment(**comment_data_dict)
                 db.add(db_comment)
                 db.flush()
 
                 created_comments.append(db_comment.id)
                 self.logger.info(
-                    f"Created comment {db_comment.id} from {self.platform_name}"
+                    f"Created comment {db_comment.id} from {self.platform_name} [tier: {quality_tier}, score: {quality_score:.2f}]"
                 )
 
             db.commit()
+            
+            # Log quality distribution
+            total = len(raw_comments)
+            meaningful = quality_stats['high'] + quality_stats['medium']
+            self.logger.info(
+                f"Stored {total} comments: "
+                f"High={quality_stats['high']}, Medium={quality_stats['medium']}, "
+                f"Low={quality_stats['low']}, Spam={quality_stats['spam']} "
+                f"({meaningful}/{total} meaningful = {meaningful/total*100:.1f}%)"
+            )
 
         except Exception as e:
             db.rollback()

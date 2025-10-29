@@ -1,8 +1,9 @@
 import asyncio
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
+from app.core.config import settings
 from app.database.connection import get_db
 from app.models.tourist_attraction import TouristAttraction
 from app.models.province import Province
@@ -140,7 +141,6 @@ class DataCollectionPipeline:
         
         self.logger.info(f"Searching {platform} with keywords: {keywords[:3]}...")  # Log first 3 keywords
         
-        # Collect posts/places from API
         raw_posts = await collector.collect_posts(keywords, province_name, limit)
         initial_count = len(raw_posts)
         
@@ -151,11 +151,12 @@ class DataCollectionPipeline:
         # Store filtered posts in database (returns mapping: platform_post_id -> db_post_id)
         post_id_mapping = collector.process_and_store_posts(filtered_posts, attraction_id)
         
-        # Collect comments for each post (including existing posts!)
         all_comments = []
         for post in filtered_posts:
-            # Get platform-specific post ID
             platform_post_id = None
+            # For TikTok, we need the URL for comment collection
+            tiktok_url = None
+            
             if platform == 'youtube':
                 platform_post_id = post.get('video_id')
             elif platform == 'google_reviews':
@@ -166,11 +167,12 @@ class DataCollectionPipeline:
                 platform_post_id = post.get('post_id')
             elif platform == 'tiktok':
                 platform_post_id = post.get('post_id') or post.get('video_id')
+                # TikTok comments need URL, not ID
+                tiktok_url = post.get('url')
             
             if not platform_post_id:
                 continue
             
-            # Get database post ID from mapping
             db_post_id = post_id_mapping.get(platform_post_id)
             if not db_post_id:
                 self.logger.warning(f"No database ID found for post {platform_post_id}, skipping comments")
@@ -178,7 +180,15 @@ class DataCollectionPipeline:
             
             try:
                 self.logger.info(f"📥 Collecting comments for post {platform_post_id} (DB ID: {db_post_id})")
-                comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
+                
+                # TikTok uses URL for comment collection, others use ID
+                if platform == 'tiktok':
+                    if not tiktok_url:
+                        self.logger.warning(f"No URL found for TikTok post {platform_post_id}, skipping comments")
+                        continue
+                    comments = await collector.collect_comments(tiktok_url, 20)
+                else:
+                    comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
                 
                 if comments:
                     collector.process_and_store_comments(comments, db_post_id, attraction_id)
@@ -221,67 +231,32 @@ class DataCollectionPipeline:
         attraction_name: str,
         province_name: str,
         limit: int
-    ) -> Dict[str, Any]:
-        from app.core.config import settings
+    ) -> Dict[str, Any]:        
+        self.logger.info(f"🔍 Using Facebook SEARCH-ONLY strategy for {attraction_name}")
         
-        self.logger.info(f"🎯 Using Facebook Best Pages strategy for {attraction_name}")
+        search_query = attraction_name[:30]
         
-        page_url = None
-        location_key = None
-        use_direct_page = False
-        
-        attraction_lower = attraction_name.lower()
-        province_lower = province_name.lower()
-        
-        if 'bà nà' in attraction_lower or 'ba na' in attraction_lower or 'đà nẵng' in province_lower:
-            location_key = 'ba_na_hills'
-        elif 'đà lạt' in attraction_lower or 'da lat' in attraction_lower or 'lâm đồng' in province_lower:
-            location_key = 'da_lat'
-        elif 'phú quốc' in attraction_lower or 'phu quoc' in attraction_lower or 'kiên giang' in province_lower:
-            location_key = 'phu_quoc'
-        
-        if location_key and location_key in settings.FACEBOOK_BEST_PAGES:
-            page_config = settings.FACEBOOK_BEST_PAGES[location_key]
-            page_url = page_config['url']
-            expected_comments = page_config['expected_comments_per_post']
-            use_direct_page = True
-            
-            self.logger.info(f"✓ Matched to best page: {page_config['name']} "
-                           f"(~{expected_comments:.1f} comments/post)")
-            self.logger.info(f"📍 Using DIRECT page URL: {page_url}")
-        else:
-            # Fallback to keyword search if no best page matched
-            self.logger.warning(f"⚠️  No best page for {attraction_name}, falling back to keyword search")
-            keywords = collector.generate_search_keywords(attraction_name, province_name)
-            page_url = keywords[0] if keywords else attraction_name
-            self.logger.info(f"🔍 Using KEYWORD search: {page_url}")
-        
-        keywords_list = [page_url] if isinstance(page_url, str) else page_url
+        self.logger.info(f"🎯 Search query: '{search_query}'")
         
         posts_with_comments = await collector.collect_posts_with_comments(
-            keywords=keywords_list,
+            keywords=[search_query],  # Pass as list with single query
             limit=limit,
             comments_per_post=settings.FACEBOOK_COMMENTS_PER_POST
         )
         
         initial_count = len(posts_with_comments)
         
-        # Filter for relevance
         filtered_posts = collector.filter_relevant_posts(posts_with_comments, attraction_name, province_name)
         filtered_count = initial_count - len(filtered_posts)
         
-        # Store posts and get mapping
         post_id_mapping = collector.process_and_store_posts(filtered_posts, attraction_id)
         
-        # Process and store comments
         all_comments = []
         for post in filtered_posts:
-            # Get platform post ID
             platform_post_id = post.get('post_id')
             if not platform_post_id:
                 continue
             
-            # Get database post ID from mapping
             db_post_id = post_id_mapping.get(platform_post_id)
             if not db_post_id:
                 continue
@@ -292,7 +267,6 @@ class DataCollectionPipeline:
                 collector.process_and_store_comments(comments, db_post_id, attraction_id)
                 all_comments.extend(comments)
         
-        # Log activity
         posts_stored = len(post_id_mapping)
         collector.log_collection_activity(
             attraction_id,
@@ -303,26 +277,21 @@ class DataCollectionPipeline:
             initial_posts=initial_count
         )
         
-        # Safe division for average calculation (fix division-by-zero)
         avg_comments = (len(all_comments) / posts_stored) if posts_stored > 0 else 0.0
-        
-        self.logger.info(f"✅ Facebook collection completed: {posts_stored} posts, "
-                        f"{len(all_comments)} comments ({avg_comments:.1f} avg/post)")
         
         return {
             'platform': 'facebook',
-            'strategy': 'best_pages' if use_direct_page else 'keyword_search',
-            'best_page_used': page_config['name'] if location_key else None,
-            'page_url_used': page_url if use_direct_page else None,
+            'strategy': 'search_only',
+            'search_query': search_query,
             'posts_collected': posts_stored,
             'posts_filtered': filtered_count,
             'initial_posts': initial_count,
             'filter_efficiency': f"{(filtered_count/initial_count*100):.1f}%" if initial_count > 0 else "0%",
             'comments_collected': len(all_comments),
             'avg_comments_per_post': f"{avg_comments:.1f}",
-            'collection_time': datetime.utcnow().isoformat()
+            'collection_time': datetime.now(timezone.utc).isoformat()
         }
-    # Collect data for all attractions in a province
+
     async def collect_for_province(
         self, 
         province_id: int, 
@@ -409,7 +378,6 @@ class DataCollectionPipeline:
                 results['total_posts'] += province_result['total_posts']
                 results['total_comments'] += province_result['total_comments']
                 
-                # Add longer delay between provinces
                 await asyncio.sleep(5)
                 
             except Exception as e:

@@ -39,9 +39,14 @@ class Comment(Base):
     topics = Column(JSONB)  # ['scenery', 'food', 'service', 'pricing', 'accessibility']
     aspect_sentiments = Column(JSONB)  # {'scenery': 'positive', 'food': 'neutral', 'service': 'negative'}
     
-    # Quality/spam detection fields
+    # Quality/spam detection fields (OLD - kept for backward compatibility)
     is_spam = Column(Boolean, default=False)  # Detected as spam/bot
     spam_score = Column(Float)
+    
+    # NEW: Quality tier system (Store ALL, Mark Quality)
+    quality_tier = Column(String(20))  # 'high', 'medium', 'low', 'spam'
+    quality_score = Column(Float)      # 0.0 - 1.0 from comment filter
+    is_meaningful = Column(Boolean, default=True)  # True if tier is 'high' or 'medium'
 
     post = relationship("SocialPost", back_populates="comments")
     attraction = relationship("TouristAttraction", back_populates="comments")
