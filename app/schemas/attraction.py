@@ -1,9 +1,7 @@
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    from app.schemas.province import Province
+from app.schemas.province import Province
 
 
 class TouristAttractionBase(BaseModel):
@@ -31,7 +29,8 @@ class TouristAttraction(TouristAttractionBase):
     province_id: int
     google_place_id: Optional[str] = None
     rating: float
-    total_reviews: int
+    total_reviews: int  # From Google Maps/external sources
+    total_comments: int  # From social platforms
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -40,13 +39,39 @@ class TouristAttraction(TouristAttractionBase):
         from_attributes = True
 
 class TouristAttractionWithProvince(TouristAttraction):
-    province: 'Province'
+    province: Province
 
 class TouristAttractionWithStats(TouristAttraction):
-    province: 'Province'
+    province: Province
     recent_comments_count: int
     sentiment_breakdown: dict
     activity_score: float
     trending_aspects: List[str]
+
+class AspectSentiment(BaseModel):
+    aspect: str
+    total_mentions: int
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+    positive_percentage: float
+    sentiment_score: float
+
+class AttractionDetailStats(BaseModel):
+    attraction: TouristAttractionWithProvince
+    
+    total_comments_6months: int
+    meaningful_comments_6months: int
+    
+    overall_sentiment: dict 
+    
+    aspects: List[AspectSentiment]
+    
+    top_positive_comments: List[dict]
+    top_negative_comments: List[dict]
+    
+    class Config:
+        from_attributes = True
+
 
 

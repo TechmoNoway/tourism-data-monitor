@@ -12,15 +12,15 @@ class ProvinceService:
     
     def get_all_provinces(self) -> List[ProvinceSchema]:
         provinces = self.db.query(Province).all()
-        return [ProvinceSchema.from_orm(province) for province in provinces]
+        return [ProvinceSchema.model_validate(province) for province in provinces]
     
     def get_province_by_id(self, province_id: int) -> Optional[ProvinceSchema]:
         province = self.db.query(Province).filter(Province.id == province_id).first()
-        return ProvinceSchema.from_orm(province) if province else None
+        return ProvinceSchema.model_validate(province) if province else None
     
     def get_province_by_code(self, province_code: str) -> Optional[ProvinceSchema]:
         province = self.db.query(Province).filter(Province.code == province_code).first()
-        return ProvinceSchema.from_orm(province) if province else None
+        return ProvinceSchema.model_validate(province) if province else None
     
     def get_attractions_by_province_id(self, province_id: int, active_only: bool = True) -> List[AttractionSchema]:
         query = self.db.query(TouristAttraction).filter(TouristAttraction.province_id == province_id)
@@ -29,7 +29,7 @@ class ProvinceService:
             query = query.filter(TouristAttraction.is_active.is_(True))
         
         attractions = query.all()
-        return [AttractionSchema.from_orm(attraction) for attraction in attractions]
+        return [AttractionSchema.model_validate(attraction) for attraction in attractions]
     
     def get_attractions_by_province_code(self, province_code: str, active_only: bool = True) -> List[AttractionSchema]:
         province = self.get_province_by_code(province_code)
@@ -47,7 +47,7 @@ class ProvinceService:
             query = query.filter(TouristAttraction.is_active.is_(True))
         
         attractions = query.all()
-        return [AttractionSchema.from_orm(attraction) for attraction in attractions]
+        return [AttractionSchema.model_validate(attraction) for attraction in attractions]
     
     def get_province_with_stats(self, province_id: int) -> Optional[ProvinceWithStats]:
         province = self.db.query(Province).filter(Province.id == province_id).first()
@@ -85,7 +85,7 @@ class ProvinceService:
             TouristAttraction.is_active.is_(True)
         ).all()
         
-        return [AttractionSchema.from_orm(attraction) for attraction in attractions]
+        return [AttractionSchema.model_validate(attraction) for attraction in attractions]
     
     def get_attractions_by_category(self, province_id: int, category: str) -> List[AttractionSchema]:
         attractions = self.db.query(TouristAttraction).filter(
@@ -94,4 +94,4 @@ class ProvinceService:
             TouristAttraction.is_active.is_(True)
         ).all()
         
-        return [AttractionSchema.from_orm(attraction) for attraction in attractions]
+        return [AttractionSchema.model_validate(attraction) for attraction in attractions]

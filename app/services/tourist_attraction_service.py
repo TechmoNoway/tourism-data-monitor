@@ -22,13 +22,13 @@ class TouristAttractionService:
             query = query.filter(TouristAttraction.is_active.is_(True))
         
         attractions = query.all()
-        return [AttractionSchema.from_orm(attraction) for attraction in attractions]
+        return [AttractionSchema.model_validate(attraction) for attraction in attractions]
     
     def get_attraction_by_id(self, attraction_id: int) -> Optional[AttractionSchema]:
         attraction = self.db.query(TouristAttraction).filter(
             TouristAttraction.id == attraction_id
         ).first()
-        return AttractionSchema.from_orm(attraction) if attraction else None
+        return AttractionSchema.model_validate(attraction) if attraction else None
     
     def get_attraction_with_province(self, attraction_id: int) -> Optional[TouristAttractionWithProvince]:
         attraction = self.db.query(TouristAttraction).join(Province).filter(
@@ -39,16 +39,16 @@ class TouristAttractionService:
             return None
             
         return TouristAttractionWithProvince(
-            **AttractionSchema.from_orm(attraction).dict(),
+            **AttractionSchema.model_validate(attraction).model_dump(),
             province=attraction.province
         )
     
     def create_attraction(self, attraction_data: TouristAttractionCreate) -> AttractionSchema:
-        db_attraction = TouristAttraction(**attraction_data.dict())
+        db_attraction = TouristAttraction(**attraction_data.model_dump())
         self.db.add(db_attraction)
         self.db.commit()
         self.db.refresh(db_attraction)
-        return AttractionSchema.from_orm(db_attraction)
+        return AttractionSchema.model_validate(db_attraction)
     
     def update_attraction(self, attraction_id: int, update_data: TouristAttractionUpdate) -> Optional[AttractionSchema]:
         attraction = self.db.query(TouristAttraction).filter(

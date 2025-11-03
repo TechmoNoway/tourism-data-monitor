@@ -54,9 +54,9 @@ async def get_province_stats(province_id: int, db: Session = Depends(get_db)):
 @router.get("/{province_id}/attractions", response_model=List[TouristAttraction])
 async def get_province_attractions(
     province_id: int,
-    active_only: bool = Query(True, description="Chỉ lấy các điểm du lịch đang hoạt động"),
-    category: Optional[str] = Query(None, description="Lọc theo danh mục"),
-    search: Optional[str] = Query(None, description="Tìm kiếm theo tên"),
+    active_only: bool = Query(True, description="Only get active tourist attractions"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search by name"),
     db: Session = Depends(get_db)
 ):
     service = ProvinceService(db)
@@ -83,9 +83,9 @@ async def get_province_attractions(
 @router.get("/code/{province_code}/attractions", response_model=List[TouristAttraction])
 async def get_province_attractions_by_code(
     province_code: str,
-    active_only: bool = Query(True, description="Chỉ lấy các điểm du lịch đang hoạt động"),
-    category: Optional[str] = Query(None, description="Lọc theo danh mục"),
-    search: Optional[str] = Query(None, description="Tìm kiếm theo tên"),
+    active_only: bool = Query(True, description="Only get active tourist attractions"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search by name"),
     db: Session = Depends(get_db)
 ):
     service = ProvinceService(db)

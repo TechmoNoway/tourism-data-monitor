@@ -9,12 +9,6 @@ class SentimentEnum(str, Enum):
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
 
-class PlatformEnum(str, Enum):
-    YOUTUBE = "youtube"
-    FACEBOOK = "facebook"
-    TIKTOK = "tiktok"
-    GOOGLE_REVIEW = "google_review"
-
 class CommentBase(BaseModel):
     platform: str
     platform_comment_id: str

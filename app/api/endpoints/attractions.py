@@ -8,7 +8,7 @@ from app.schemas.attraction import (
     TouristAttraction,
     TouristAttractionCreate,
     TouristAttractionUpdate,
-    TouristAttractionWithProvince
+    TouristAttractionWithProvince,
 )
 from app.schemas.common import ApiResponse
 
@@ -17,12 +17,12 @@ router = APIRouter()
 
 @router.get("/", response_model=List[TouristAttraction])
 async def get_attractions(
-    province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
-    category: Optional[str] = Query(None, description="Lọc theo danh mục"),
-    search: Optional[str] = Query(None, description="Tìm kiếm theo tên/mô tả"),
-    min_rating: Optional[float] = Query(None, ge=0, le=5, description="Rating tối thiểu"),
-    active_only: bool = Query(True, description="Chỉ lấy điểm du lịch hoạt động"),
-    limit: int = Query(100, le=1000, description="Số lượng kết quả tối đa"),
+    province_id: Optional[int] = Query(None, description="Filter by province"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search by name/description"),
+    min_rating: Optional[float] = Query(None, ge=0, le=5, description="Minimum rating"),
+    active_only: bool = Query(True, description="Only active attractions"),
+    limit: int = Query(100, le=1000, description="Maximum number of results"),
     db: Session = Depends(get_db)
 ):
     service = TouristAttractionService(db)
@@ -35,14 +35,13 @@ async def get_attractions(
         active_only=active_only
     )
     
-    # Limit results
     return attractions[:limit]
 
 
 @router.get("/popular", response_model=List[TouristAttraction])
 async def get_popular_attractions(
-    province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
-    limit: int = Query(10, le=50, description="Số lượng kết quả"),
+    province_id: Optional[int] = Query(None, description="Filter by province"),
+    limit: int = Query(10, le=50, description="Number of results"),
     db: Session = Depends(get_db)
 ):
     service = TouristAttractionService(db)
@@ -51,7 +50,7 @@ async def get_popular_attractions(
 
 @router.get("/categories", response_model=List[str])
 async def get_attraction_categories(
-    province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
+    province_id: Optional[int] = Query(None, description="Filter by province"),
     db: Session = Depends(get_db)
 ):
     service = TouristAttractionService(db)
@@ -118,8 +117,8 @@ async def deactivate_attraction(attraction_id: int, db: Session = Depends(get_db
 @router.patch("/{attraction_id}/rating", response_model=TouristAttraction)
 async def update_attraction_rating(
     attraction_id: int,
-    rating: float = Query(..., ge=0, le=5, description="Rating mới (0-5)"),
-    review_count: int = Query(..., ge=0, description="Tổng số review"),
+    rating: float = Query(..., ge=0, le=5, description="New rating (0-5)"),
+    review_count: int = Query(..., ge=0, description="Total review count"),
     db: Session = Depends(get_db)
 ):
     service = TouristAttractionService(db)
@@ -134,7 +133,7 @@ async def update_attraction_rating(
 @router.get("/category/{category}", response_model=List[TouristAttraction])
 async def get_attractions_by_category(
     category: str,
-    province_id: Optional[int] = Query(None, description="Lọc theo tỉnh"),
+    province_id: Optional[int] = Query(None, description="Filter by province"),
     db: Session = Depends(get_db)
 ):
     service = TouristAttractionService(db)

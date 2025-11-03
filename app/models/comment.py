@@ -17,7 +17,7 @@ class Comment(Base):
     attraction_id = Column(Integer, ForeignKey("tourist_attractions.id"))
     content = Column(Text)
     author = Column(String(200))
-    author_id = Column(String(100))
+    author_id = Column(String(200))
     like_count = Column(Integer, default=0)
     reply_count = Column(Integer, default=0)
     comment_date = Column(DateTime)
@@ -39,11 +39,11 @@ class Comment(Base):
     topics = Column(JSONB)  # ['scenery', 'food', 'service', 'pricing', 'accessibility']
     aspect_sentiments = Column(JSONB)  # {'scenery': 'positive', 'food': 'neutral', 'service': 'negative'}
     
-    # Quality/spam detection fields (OLD - kept for backward compatibility)
+    # Quality/spam detection fields
     is_spam = Column(Boolean, default=False)  # Detected as spam/bot
     spam_score = Column(Float)
     
-    # NEW: Quality tier system (Store ALL, Mark Quality)
+    # Quality tier system
     quality_tier = Column(String(20))  # 'high', 'medium', 'low', 'spam'
     quality_score = Column(Float)      # 0.0 - 1.0 from comment filter
     is_meaningful = Column(Boolean, default=True)  # True if tier is 'high' or 'medium'

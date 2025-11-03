@@ -16,7 +16,8 @@ class TouristAttraction(Base):
     keywords = Column(Text) #json string of keywords
     google_place_id = Column(String(200))
     rating = Column(Float, default=0.0)
-    total_reviews = Column(Integer, default=0)
+    total_reviews = Column(Integer, default=0)  
+    total_comments = Column(Integer, default=0)  
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))

@@ -225,10 +225,10 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
     avg_comments = total_comments_collected / total_attractions if total_attractions > 0 else 0
     
     print("TOTALS:")
-    print(f"   Attractions processed: {total_attractions}")
-    print(f"   New posts collected: {total_posts_collected}")
-    print(f"   New comments collected: {total_comments_collected}")
-    print(f"   Average comments/attraction: {avg_comments:.1f}")
+    print(f"Attractions processed: {total_attractions}")
+    print(f"New posts collected: {total_posts_collected}")
+    print(f"New comments collected: {total_comments_collected}")
+    print(f"Average comments/attraction: {avg_comments:.1f}")
     print()
     print()
 

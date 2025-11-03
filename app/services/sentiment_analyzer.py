@@ -1,6 +1,5 @@
 import re
 from typing import Dict, List, Optional
-from datetime import datetime
 import logging
 
 try:
@@ -32,7 +31,7 @@ class MultilingualSentimentAnalyzer:
             )
         
         self.use_gpu = use_gpu
-        device = 0 if use_gpu else -1  # 0 = GPU, -1 = CPU
+        device = 0 if use_gpu else -1
         
         logger.info("Initializing sentiment analysis models...")
         

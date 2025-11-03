@@ -127,7 +127,7 @@ def check_database_stats():
         comments_with_topics = db.query(Comment).filter(Comment.topics.isnot(None)).count()
         
         if comments_with_topics > 0:
-            print(f"\nTOPIC CLASSIFICATION:")
+            print("\nTOPIC CLASSIFICATION:")
             print(f"  Comments with topics: {comments_with_topics}/{analyzed_comments} ({comments_with_topics/analyzed_comments*100:.1f}%)")
             
             # Count topics (JSONB array contains)

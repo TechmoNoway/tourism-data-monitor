@@ -1,6 +1,3 @@
-"""
-Data Collection API Endpoints
-"""
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -83,7 +80,6 @@ async def run_manual_collection(request: ManualCollectionRequest, background_tas
     try:
         scheduler = get_scheduler()
         
-        # Run collection in background
         def run_collection():
             try:
                 result = scheduler.run_manual_collection(
@@ -141,7 +137,6 @@ async def schedule_collection_job(request: ScheduleRequest):
         else:
             raise HTTPException(status_code=400, detail="Invalid job_type. Use 'daily', 'hourly', or 'weekly'")
         
-        # Start scheduler if not running
         if not scheduler.is_running:
             scheduler.start()
         
@@ -277,7 +272,6 @@ async def get_available_platforms():
         }
         
     except RuntimeError:
-        # Return basic info even if not initialized
         return {
             "available_platforms": [],
             "message": "Collection system not initialized",
