@@ -215,6 +215,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Custom ignores
 .env.example
 note
 scripts/clear_database.py
+data

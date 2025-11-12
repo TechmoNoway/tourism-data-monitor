@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class MultilingualSentimentAnalyzer:
+    """
+    Multilingual sentiment analyzer with support for:
+    - Vietnamese (PhoBERT)
+    - 100+ languages (XLM-RoBERTa)
+    - Rule-based fallback
+    - Sentiment flipper handling ("nhưng", "but", "however")
+    """
     
     def __init__(self, use_gpu: bool = False):
         if not TRANSFORMERS_AVAILABLE:
@@ -58,6 +65,12 @@ class MultilingualSentimentAnalyzer:
         except Exception as e:
             logger.error(f"Failed to load multilingual model: {e}")
             self.multilingual_analyzer = None
+        
+        # Sentiment flipper keywords (priority to text AFTER these words)
+        self.flipper_keywords = {
+            'vi': ['nhưng', 'tuy nhiên', 'nhưng mà', 'song', 'nhưng lại'],
+            'en': ['but', 'however', 'though', 'although', 'yet'],
+        }
     
     def detect_language(self, text: str) -> str:
         try:
@@ -105,19 +118,120 @@ class MultilingualSentimentAnalyzer:
     def count_words(self, text: str) -> int:
         return len(text.split())
     
+    def _split_by_flipper(self, text: str, language: str) -> tuple[str, str, bool]:
+        """
+        Split text by sentiment flipper keywords (nhưng, but, however).
+        
+        Returns:
+            tuple: (before_text, after_text, has_flipper)
+            - If flipper found: returns text before and after the FIRST flipper
+            - If no flipper: returns (full_text, '', False)
+        
+        Strategy: Text AFTER flipper has higher priority in final sentiment.
+        
+        Examples:
+            "Đẹp nhưng đắt" → ("Đẹp", "đắt", True) → prioritize "đắt" (negative)
+            "Tốt nhưng xa" → ("Tốt", "xa", True) → prioritize "xa" (negative/neutral)
+        """
+        text_lower = text.lower()
+        
+        # Get flipper keywords for language
+        flippers = self.flipper_keywords.get(language, self.flipper_keywords['en'])
+        
+        # Find first flipper (use earliest occurrence)
+        earliest_pos = len(text)
+        earliest_flipper = None
+        
+        for flipper in flippers:
+            pos = text_lower.find(flipper)
+            if pos != -1 and pos < earliest_pos:
+                earliest_pos = pos
+                earliest_flipper = flipper
+        
+        # No flipper found
+        if earliest_flipper is None:
+            return (text, '', False)
+        
+        # Split at flipper position
+        before = text[:earliest_pos].strip()
+        after = text[earliest_pos + len(earliest_flipper):].strip()
+        
+        logger.debug(f"Flipper '{earliest_flipper}' found. Before: '{before[:30]}...', After: '{after[:30]}...'")
+        
+        return (before, after, True)
+    
     def analyze_sentiment(self, text: str, language: Optional[str] = None) -> Dict:
+        """
+        Analyze sentiment with support for sentiment flippers.
+        
+        Strategy:
+        1. Detect language if not provided
+        2. Check for sentiment flipper keywords (nhưng, but, however)
+        3. If flipper found:
+           - Analyze text BEFORE flipper
+           - Analyze text AFTER flipper
+           - PRIORITIZE sentiment from AFTER part (70% weight)
+        4. If no flipper: analyze normally
+        """
         cleaned = self.clean_text(text)
         word_count = self.count_words(cleaned)
         
         if language is None:
             language = self.detect_language(text)
         
+        # Check for sentiment flipper
+        before, after, has_flipper = self._split_by_flipper(cleaned, language)
+        
+        if has_flipper and after:
+            # Analyze both parts
+            result_before = self._analyze_single_part(before, language, self.count_words(before))
+            result_after = self._analyze_single_part(after, language, self.count_words(after))
+            
+            # Prioritize AFTER part (70% weight)
+            sentiment_map = {'positive': 1, 'neutral': 0, 'negative': -1}
+            
+            before_value = sentiment_map.get(result_before['sentiment'], 0) * 0.3
+            after_value = sentiment_map.get(result_after['sentiment'], 0) * 0.7
+            
+            combined_value = before_value + after_value
+            
+            # Convert back to sentiment
+            if combined_value > 0.2:
+                final_sentiment = 'positive'
+            elif combined_value < -0.2:
+                final_sentiment = 'negative'
+            else:
+                final_sentiment = 'neutral'
+            
+            # Average confidence
+            confidence = (result_before.get('sentiment_score', 0.5) * 0.3 + 
+                         result_after.get('sentiment_score', 0.5) * 0.7)
+            
+            return {
+                'sentiment': final_sentiment,
+                'sentiment_score': confidence,
+                'language': language,
+                'analysis_model': result_after.get('analysis_model', 'rule-based'),
+                'cleaned_content': cleaned,
+                'word_count': word_count,
+                'flipper_detected': True,
+                'before_sentiment': result_before['sentiment'],
+                'after_sentiment': result_after['sentiment']
+            }
+        
+        # No flipper, analyze normally
+        result = self._analyze_single_part(cleaned, language, word_count)
+        result['flipper_detected'] = False
+        return result
+    
+    def _analyze_single_part(self, text: str, language: str, word_count: int) -> Dict:
+        """Analyze a single text part (used for both flipper and non-flipper cases)"""
         if language == 'vi' and self.vi_analyzer:
-            return self._analyze_with_phobert(cleaned, language, word_count)
+            return self._analyze_with_phobert(text, language, word_count)
         elif self.multilingual_analyzer:
-            return self._analyze_with_xlm(cleaned, language, word_count)
+            return self._analyze_with_xlm(text, language, word_count)
         else:
-            return self._analyze_rule_based(cleaned, language, word_count)
+            return self._analyze_rule_based(text, language, word_count)
     
     def _analyze_with_phobert(self, text: str, language: str, word_count: int) -> Dict:
         try:

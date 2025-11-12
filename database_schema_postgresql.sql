@@ -18,19 +18,21 @@ CREATE TABLE tourist_attractions (
     address           VARCHAR(500),
     province_id       INTEGER NOT NULL,
     description       TEXT,
-    keywords          JSONB,                          -- JSON for better performance in PostgreSQL
+    keywords          TEXT,                             -- JSON string of keywords
     google_place_id   VARCHAR(200),
-    rating            DECIMAL(3,2) DEFAULT 0.0,
+    rating            DOUBLE PRECISION DEFAULT 0.0,      -- Float in SQLAlchemy
     total_reviews     INTEGER DEFAULT 0,
     is_active         BOOLEAN DEFAULT TRUE,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    total_comments    INTEGER DEFAULT 0,                 -- Social media comments count (added later)
     
     FOREIGN KEY (province_id) REFERENCES provinces(id) ON DELETE CASCADE,
     
     -- Constraints
     CONSTRAINT rating_range CHECK (rating >= 0.0 AND rating <= 5.0),
-    CONSTRAINT reviews_positive CHECK (total_reviews >= 0)
+    CONSTRAINT reviews_positive CHECK (total_reviews >= 0),
+    CONSTRAINT comments_positive CHECK (total_comments >= 0)
 );
 
 -- 3. TABLE: social_posts
@@ -55,7 +57,7 @@ CREATE TABLE social_posts (
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
     
     -- Constraints
-    CONSTRAINT platform_values CHECK (platform IN ('youtube', 'facebook', 'tiktok', 'google_review')),
+    CONSTRAINT platform_values CHECK (platform IN ('youtube', 'facebook', 'tiktok', 'google_review', 'google_maps')),
     CONSTRAINT positive_counts CHECK (
         view_count >= 0 AND 
         like_count >= 0 AND 
@@ -76,11 +78,12 @@ CREATE TABLE comments (
     attraction_id           INTEGER NOT NULL,
     content                 TEXT NOT NULL,
     author                  VARCHAR(200),
-    author_id               VARCHAR(100),
+    author_id               VARCHAR(200),
     like_count              INTEGER DEFAULT 0,
     reply_count             INTEGER DEFAULT 0,
     comment_date            TIMESTAMP WITH TIME ZONE,
     scraped_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    sentiment_score         DOUBLE PRECISION,                       -- Confidence score (Float in SQLAlchemy) - moved here to match DB
     
     -- Data cleaning fields
     cleaned_content         TEXT,                                   -- Content after preprocessing
@@ -90,17 +93,21 @@ CREATE TABLE comments (
     
     -- Sentiment analysis fields (Multi-language support: PhoBERT + XLM-RoBERTa)
     sentiment               VARCHAR(20),                            -- 'positive', 'neutral', 'negative'
-    sentiment_score         DECIMAL(4,3),                          -- Confidence score 0.000 to 1.000
     analysis_model          VARCHAR(50),                            -- 'phobert', 'xlm-roberta', 'rule-based'
     analyzed_at             TIMESTAMP WITH TIME ZONE,              -- Analysis timestamp
     
     -- Topic classification fields
-    topics                  JSONB,                                  -- ['scenery', 'food', 'service', 'pricing', 'accessibility']
+    topics                  JSONB,                                  -- ['scenery', 'food', 'service', 'pricing', 'accessibility', 'facilities', 'activities']
     aspect_sentiments       JSONB,                                  -- {'scenery': 'positive', 'food': 'neutral'}
     
     -- Spam/quality detection fields
     is_spam                 BOOLEAN DEFAULT FALSE,                  -- Spam/bot detection result
-    spam_score              DECIMAL(4,3),                          -- Spam confidence 0.000 to 1.000
+    spam_score              DOUBLE PRECISION,                       -- Spam confidence (Float in SQLAlchemy)
+    
+    -- Comment quality system (3-tier) - added later
+    quality_tier            VARCHAR(20),                            -- 'HIGH', 'MEDIUM', 'LOW', 'SPAM'
+    quality_score           DOUBLE PRECISION,                       -- Quality score (Float in SQLAlchemy)
+    is_meaningful           BOOLEAN DEFAULT TRUE,                   -- True if tier is HIGH or MEDIUM
 
     FOREIGN KEY (post_id) REFERENCES social_posts(id) ON DELETE CASCADE,
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
@@ -114,6 +121,12 @@ CREATE TABLE comments (
     ),
     CONSTRAINT spam_score_range CHECK (
         spam_score >= 0.0 AND spam_score <= 1.0 OR spam_score IS NULL
+    ),
+    CONSTRAINT quality_score_range CHECK (
+        quality_score >= 0.0 AND quality_score <= 1.0 OR quality_score IS NULL
+    ),
+    CONSTRAINT quality_tier_values CHECK (
+        quality_tier IN ('HIGH', 'MEDIUM', 'LOW', 'SPAM', 'high', 'medium', 'low', 'spam') OR quality_tier IS NULL
     ),
     CONSTRAINT positive_engagement CHECK (
         like_count >= 0 AND reply_count >= 0
@@ -136,9 +149,9 @@ CREATE TABLE analysis_logs (
     negative_comments   INTEGER DEFAULT 0,
     neutral_comments    INTEGER DEFAULT 0,
     bot_comments        INTEGER DEFAULT 0,
-    avg_sentiment       DECIMAL(4,3) DEFAULT 0.0,
-    trending_aspects    JSONB,                          -- JSON for trending aspects
-    activity_score      DECIMAL(4,2) DEFAULT 0.0,      -- 0.00 đến 10.00
+    avg_sentiment       DOUBLE PRECISION DEFAULT 0.0,   -- Float in SQLAlchemy
+    trending_aspects    TEXT,                           -- JSON string
+    activity_score      DOUBLE PRECISION DEFAULT 0.0,   -- Float in SQLAlchemy
     
     FOREIGN KEY (attraction_id) REFERENCES tourist_attractions(id) ON DELETE CASCADE,
     
@@ -171,7 +184,8 @@ CREATE INDEX idx_attractions_province ON tourist_attractions(province_id);
 CREATE INDEX idx_attractions_active ON tourist_attractions(is_active);
 CREATE INDEX idx_attractions_category ON tourist_attractions(category);
 CREATE INDEX idx_attractions_rating ON tourist_attractions(rating DESC);
-CREATE INDEX idx_attractions_keywords ON tourist_attractions USING GIN (keywords);
+-- GIN index removed: keywords is now TEXT (JSON string), not JSONB
+-- If full-text search needed, use: CREATE INDEX idx_attractions_keywords ON tourist_attractions USING gin(to_tsvector('english', keywords));
 
 -- Indexes for social_posts table
 CREATE INDEX idx_posts_attraction ON social_posts(attraction_id);
@@ -196,6 +210,11 @@ CREATE INDEX idx_comments_sentiment_score ON comments(sentiment_score DESC);
 CREATE INDEX idx_comments_valid ON comments(is_valid);
 CREATE INDEX idx_comments_spam ON comments(is_spam);
 
+-- Indexes for comment quality system
+CREATE INDEX idx_comments_quality_tier ON comments(quality_tier);
+CREATE INDEX idx_comments_quality_score ON comments(quality_score DESC);
+CREATE INDEX idx_comments_meaningful ON comments(is_meaningful);
+
 -- GIN indexes for JSONB fields
 CREATE INDEX idx_comments_topics ON comments USING GIN (topics);
 CREATE INDEX idx_comments_aspects ON comments USING GIN (aspect_sentiments);
@@ -205,12 +224,13 @@ CREATE INDEX idx_analysis_attraction ON analysis_logs(attraction_id);
 CREATE INDEX idx_analysis_date ON analysis_logs(analysis_date DESC);
 CREATE INDEX idx_analysis_activity ON analysis_logs(activity_score DESC);
 CREATE INDEX idx_analysis_sentiment ON analysis_logs(avg_sentiment DESC);
-CREATE INDEX idx_analysis_trending ON analysis_logs USING GIN (trending_aspects);
+-- GIN index removed: trending_aspects is now TEXT (JSON string), not JSONB
+-- If needed, regular B-tree index can be used for equality checks on trending_aspects
 
 -- COMPOSITE INDEXES FOR COMPLEX QUERIES
 
 -- Comments by attraction and sentiment
-CREATE INDEX idx_comments_attraction_sentiment ON comments(attraction_id, sentiment_label);
+CREATE INDEX idx_comments_attraction_sentiment ON comments(attraction_id, sentiment);
 
 -- Posts by attraction and platform
 CREATE INDEX idx_posts_attraction_platform ON social_posts(attraction_id, platform);
@@ -218,9 +238,6 @@ CREATE INDEX idx_posts_attraction_platform ON social_posts(attraction_id, platfo
 -- Time-based analysis queries
 CREATE INDEX idx_comments_attraction_date ON comments(attraction_id, comment_date DESC);
 CREATE INDEX idx_analysis_attraction_date ON analysis_logs(attraction_id, analysis_date DESC);
-
--- Bot analysis
-CREATE INDEX idx_comments_bot_sentiment ON comments(is_bot_suspected, sentiment_label);
 
 -- FULL-TEXT SEARCH INDEXES (PostgreSQL specific)
 
@@ -269,8 +286,8 @@ SELECT
     COALESCE(SUM(ta.total_reviews), 0) as total_reviews,
     COALESCE(AVG(ta.rating), 0) as avg_rating,
     COUNT(c.id) as total_comments,
-    COUNT(CASE WHEN c.sentiment_label = 'positive' THEN 1 END) as positive_comments,
-    COUNT(CASE WHEN c.sentiment_label = 'negative' THEN 1 END) as negative_comments,
+    COUNT(CASE WHEN c.sentiment = 'positive' THEN 1 END) as positive_comments,
+    COUNT(CASE WHEN c.sentiment = 'negative' THEN 1 END) as negative_comments,
     COALESCE(AVG(c.sentiment_score), 0) as avg_sentiment
 FROM provinces p
 LEFT JOIN tourist_attractions ta ON p.id = ta.province_id

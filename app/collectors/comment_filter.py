@@ -7,8 +7,8 @@ class CommentFilter:
     
     def __init__(
         self, 
-        min_length: int = 3,  
-        min_chars: int = 10  
+        min_length: int = 2,  
+        min_chars: int = 5
     ):
         self.min_length = min_length
         self.min_chars = min_chars
@@ -49,12 +49,12 @@ class CommentFilter:
             r'^[a-zA-Z]\s*$',
         }
         
+        # Only truly meaningless single words
         self.meaningless_words = {
             'ok', 'okay', 'k', 'oke', 'okê',
             'yes', 'no', 'yep', 'nope',
             'ừ', 'à', 'ơ', 'ô', 'ồ', 'ừm',
-            'good', 'nice', 'wow', 'lol', 'haha', 'hihi', 'hehe',
-            'đẹp', 'hay', 'tốt', 'ngon',
+            'lol', 'haha', 'hihi', 'hehe',
             'first', 'đầu', '1st',
         }
         
@@ -155,6 +155,20 @@ class CommentFilter:
         return filtered, stats
     
     def get_quality_score(self, comment_text: str) -> float:
+        """
+        Calculate quality score based on multiple factors.
+        
+        Scoring breakdown:
+        - Base: 0.3 (if valid)
+        - Length & structure: +0.0 to +0.25
+        - Content relevance: +0.0 to +0.30
+        - Writing quality: +0.0 to +0.20
+        - Emoji usage: +0.0 to +0.10
+        - Penalties: -0.1 to -0.3 for poor quality indicators
+        
+        Returns:
+            float: Quality score from 0.0 to 1.0
+        """
         if not comment_text:
             return 0.0
         
@@ -162,33 +176,109 @@ class CommentFilter:
         if not is_valid:
             return 0.0
         
-        score = 0.5 
+        score = 0.3  # Reduced base score
         
         text_clean = comment_text.strip()
         text_lower = text_clean.lower()
         words = re.findall(r'\b\w+\b', text_clean)
+        word_count = len(words)
+        char_count = len(text_clean)
         
-        if len(words) >= 10:
-            score += 0.2
-        elif len(words) >= 5:
-            score += 0.1
+        # 1. Length & Structure Score (0-0.25)
+        if word_count >= 20:
+            score += 0.25
+        elif word_count >= 10:
+            score += 0.15
+        elif word_count >= 5:
+            score += 0.08
+        elif word_count >= 3:
+            score += 0.03
         
-        quality_keywords = [
-            'đẹp', 'tuyệt', 'tốt', 'hay', 'ngon', 'beautiful', 'amazing', 'great',
-            'trải nghiệm', 'experience', 'review', 'đánh giá',
-            'thích', 'like', 'love', 'recommend', 'nên đến', 'should visit'
-        ]
-        quality_found = sum(1 for kw in quality_keywords if kw in text_lower)
-        score += min(0.3, quality_found * 0.1)
+        # 2. Content Relevance Score (0-0.30)
+        # Tourism-specific quality keywords
+        quality_keywords = {
+            'high': ['trải nghiệm', 'experience', 'recommend', 'nên đến', 'should visit', 
+                    'đánh giá', 'review', 'tuyệt vời', 'amazing', 'wonderful'],
+            'medium': ['đẹp', 'tốt', 'hay', 'ngon', 'thích', 'beautiful', 'great', 'good', 
+                      'nice', 'love', 'like', 'hài lòng']
+        }
         
-        if any(p in text_clean for p in ['.', '!', '?', ',']):
+        high_kw_count = sum(1 for kw in quality_keywords['high'] if kw in text_lower)
+        medium_kw_count = sum(1 for kw in quality_keywords['medium'] if kw in text_lower)
+        
+        content_score = min(0.30, high_kw_count * 0.15 + medium_kw_count * 0.08)
+        score += content_score
+        
+        # 3. Writing Quality Score (0-0.20)
+        # Check for proper sentence structure
+        has_punctuation = any(p in text_clean for p in ['.', '!', '?'])
+        has_commas = ',' in text_clean
+        
+        if has_punctuation:
+            score += 0.10
+        if has_commas and word_count >= 10:
             score += 0.05
         
+        # Check character diversity (avoid spam like "aaaaaa")
+        if char_count > 0:
+            unique_chars = len(set(text_clean.lower().replace(' ', '')))
+            char_diversity = unique_chars / char_count
+            if char_diversity >= 0.4:  # Good diversity
+                score += 0.05
+        
+        # 4. Emoji Usage Score (0-0.10)
         emoji_count = len(re.findall(r'[\U0001F300-\U0001F9FF]', text_clean))
-        if 1 <= emoji_count <= 5:
+        if 1 <= emoji_count <= 3:
             score += 0.05
+        elif 4 <= emoji_count <= 5:
+            score += 0.03
         
-        return min(1.0, score)
+        # 5. Penalties for poor quality
+        # Too many emojis
+        if emoji_count > 10:
+            score -= 0.15
+        elif emoji_count > 5:
+            score -= 0.08
+        
+        # Excessive caps (shouty text)
+        alpha_chars = [c for c in text_clean if c.isalpha()]
+        if len(alpha_chars) > 10:
+            caps_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
+            if caps_ratio > 0.5:
+                score -= 0.10
+        
+        # Excessive special characters
+        special_chars = sum(1 for c in text_clean if not c.isalnum() and not c.isspace())
+        if char_count > 0:
+            special_ratio = special_chars / char_count
+            if special_ratio > 0.3:
+                score -= 0.10
+        
+        # Single/very short words repeated
+        if word_count >= 3:
+            word_lower = [w.lower() for w in words]
+            unique_words = len(set(word_lower))
+            word_diversity = unique_words / word_count
+            if word_diversity < 0.5:  # Less than 50% unique words
+                score -= 0.10
+        
+        # Penalty for gibberish (many single-char words, mixed random letters/numbers)
+        single_char_words = sum(1 for w in words if len(w) == 1)
+        if word_count > 0:
+            single_char_ratio = single_char_words / word_count
+            if single_char_ratio > 0.3:  # More than 30% single-char words
+                score -= 0.20
+            elif single_char_ratio > 0.15:  # 15-30% single-char words
+                score -= 0.10
+        
+        # Penalty for mixed number-letter words (like "1bài", "YPhụng")
+        mixed_words = sum(1 for w in words if any(c.isdigit() for c in w) and any(c.isalpha() for c in w))
+        if word_count > 0:
+            mixed_ratio = mixed_words / word_count
+            if mixed_ratio > 0.10:  # More than 10% mixed words (lowered from 15%)
+                score -= 0.15
+        
+        return max(0.0, min(1.0, score))
     
     def assess_comment_quality(
         self, 
