@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 import logging
 
 from app.database.connection import get_db
@@ -11,6 +10,8 @@ from app.schemas.post import SocialPostCreate
 from app.schemas.comment import CommentCreate
 from app.collectors.relevance_filter import RelevanceFilter, PlatformKeywordOptimizer
 from app.collectors.comment_filter import CommentFilter
+from app.services.sentiment_analyzer import MultilingualSentimentAnalyzer
+from app.services.topic_classifier import TopicClassifier
 
 
 class BaseCollector(ABC):
@@ -29,8 +30,12 @@ class BaseCollector(ABC):
         self.logger = logging.getLogger(f"collector.{platform_name}")
         self.relevance_filter = RelevanceFilter(min_relevance_score=min_relevance_score)
         self.keyword_optimizer = PlatformKeywordOptimizer()
-        self.comment_filter = CommentFilter(min_length=3, min_chars=10)
+        self.comment_filter = CommentFilter(min_length=2, min_chars=5)
+        self.sentiment_analyzer = MultilingualSentimentAnalyzer()
+        self.topic_classifier = TopicClassifier()
         self.min_relevance_score = min_relevance_score
+        
+        self.logger.info(f"Initialized {platform_name} collector with sentiment analysis + topic classification")
 
     @abstractmethod
     async def collect_posts(
@@ -65,7 +70,6 @@ class BaseCollector(ABC):
             attraction_name, province_name
         )
         
-        # Apply platform-specific optimization
         if self.platform_name.lower() == 'youtube':
             keywords = self.keyword_optimizer.optimize_for_youtube(keywords)
         elif self.platform_name.lower() == 'facebook':
@@ -98,15 +102,12 @@ class BaseCollector(ABC):
         
         initial_count = len(raw_posts)
         
-        # Filter by relevance score
         filtered_posts = self.relevance_filter.filter_posts(
             raw_posts, attraction_name, province_name
         )
         
-        # Filter by date (keep last 90 days by default)
         filtered_posts = self.relevance_filter.filter_by_date(filtered_posts, days_back=90)
         
-        # Remove duplicates
         filtered_posts = self.relevance_filter.remove_duplicates(filtered_posts)
         
         final_count = len(filtered_posts)
@@ -176,13 +177,10 @@ class BaseCollector(ABC):
         db = next(get_db())
         created_comments = []
         
-        # NEW APPROACH: Store ALL comments, but mark quality tier
-        # Don't filter - we need all comments for engagement metrics
         quality_stats = {'high': 0, 'medium': 0, 'low': 0, 'spam': 0}
 
         try:
             for raw_comment in raw_comments:
-                # Assess quality (but don't filter)
                 text = raw_comment.get('text', '')
                 author = raw_comment.get('author_name', '')
                 quality_tier, quality_score = \
@@ -190,14 +188,36 @@ class BaseCollector(ABC):
                 
                 quality_stats[quality_tier] += 1
                 
-                # Convert to comment data
+                # Analyze sentiment (only for meaningful comments to save resources)
+                sentiment = 'neutral'
+                sentiment_score = 0.0
+                topics = []
+                
+                if quality_tier in ['high', 'medium', 'low']:
+                    try:
+                        # Sentiment analysis with flipper support
+                        sentiment_result = self.sentiment_analyzer.analyze_sentiment(text)
+                        sentiment = sentiment_result['sentiment']
+                        sentiment_score = sentiment_result['confidence']
+                        
+                        # Topic classification
+                        topics = self.topic_classifier.classify(text)
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Analysis failed for comment: {str(e)}")
+                
                 comment_data = self._convert_raw_comment(raw_comment, post_id, attraction_id)
                 
                 # Add quality assessment fields
-                comment_data_dict = comment_data.dict()
+                comment_data_dict = comment_data.model_dump()
                 comment_data_dict['quality_tier'] = quality_tier
                 comment_data_dict['quality_score'] = quality_score
                 comment_data_dict['is_meaningful'] = quality_tier in ['high', 'medium']
+                
+                # Add sentiment analysis fields
+                comment_data_dict['sentiment'] = sentiment
+                comment_data_dict['sentiment_score'] = sentiment_score
+                comment_data_dict['topics'] = topics
 
                 existing_comment = (
                     db.query(Comment)
@@ -219,8 +239,13 @@ class BaseCollector(ABC):
                 db.flush()
 
                 created_comments.append(db_comment.id)
+                
+                # Enhanced logging with sentiment info
+                topics_str = ', '.join(topics[:2]) if topics else 'none'
                 self.logger.info(
-                    f"Created comment {db_comment.id} from {self.platform_name} [tier: {quality_tier}, score: {quality_score:.2f}]"
+                    f"Created comment {db_comment.id} from {self.platform_name} "
+                    f"[tier: {quality_tier}, score: {quality_score:.2f}, "
+                    f"sentiment: {sentiment}, topics: {topics_str}]"
                 )
 
             db.commit()
