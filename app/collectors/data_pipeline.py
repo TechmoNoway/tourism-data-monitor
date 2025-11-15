@@ -34,7 +34,7 @@ class DataCollectionPipeline:
                 facebook_collector = FacebookPostsScraper(apify_api_token)
                 if facebook_collector.authenticate():
                     self.collectors['facebook'] = facebook_collector
-                    self.logger.info("✓ Facebook Posts Scraper initialized")
+                    self.logger.info("[OK] Facebook Posts Scraper initialized")
                 else:
                     self.logger.error("Failed to authenticate Facebook Posts Scraper")
             except Exception as e:
@@ -42,13 +42,13 @@ class DataCollectionPipeline:
             
             try:
                 self.collectors['tiktok'] = create_tiktok_collector(apify_api_token)
-                self.logger.info("✓ TikTok collector initialized")
+                self.logger.info("[OK] TikTok collector initialized")
             except Exception as e:
                 self.logger.error(f"Failed to initialize TikTok collector: {str(e)}")
             
             try:
                 self.collectors['google_maps'] = create_google_maps_collector(apify_api_token)
-                self.logger.info("✓ Google Maps collector initialized")
+                self.logger.info("[OK] Google Maps collector initialized")
             except Exception as e:
                 self.logger.error(f"Failed to initialize Google Maps collector: {str(e)}")
         else:
@@ -186,16 +186,18 @@ class DataCollectionPipeline:
                     if not tiktok_url:
                         self.logger.warning(f"No URL found for TikTok post {platform_post_id}, skipping comments")
                         continue
-                    comments = await collector.collect_comments(tiktok_url, 20)
+                    # Scale 3x: Previous 20 → 60 comments per post
+                    comments = await collector.collect_comments(tiktok_url, 60)
                 else:
-                    comments = await collector.collect_comments(platform_post_id, 20)  # Limit comments per post
+                    # Scale 3x: Previous 20 → 60 comments per post
+                    comments = await collector.collect_comments(platform_post_id, 60)
                 
                 if comments:
                     collector.process_and_store_comments(comments, db_post_id, attraction_id)
                     all_comments.extend(comments)
-                    self.logger.info(f"   ✅ Stored {len(comments)} comments")
+                    self.logger.info(f"   [SUCCESS] Stored {len(comments)} comments")
                 else:
-                    self.logger.info("   ℹ️  No comments found")
+                    self.logger.info("   [INFO] No comments found")
                     
             except Exception as e:
                 self.logger.warning(f"Failed to collect comments for post {platform_post_id}: {str(e)}")
@@ -232,11 +234,11 @@ class DataCollectionPipeline:
         province_name: str,
         limit: int
     ) -> Dict[str, Any]:        
-        self.logger.info(f"🔍 Using Facebook SEARCH-ONLY strategy for {attraction_name}")
+        self.logger.info(f"[SEARCH] Using Facebook SEARCH-ONLY strategy for {attraction_name}")
         
         search_query = attraction_name[:30]
         
-        self.logger.info(f"🎯 Search query: '{search_query}'")
+        self.logger.info(f"[QUERY] Search query: '{search_query}'")
         
         posts_with_comments = await collector.collect_posts_with_comments(
             keywords=[search_query],  # Pass as list with single query

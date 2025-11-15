@@ -66,18 +66,18 @@ def main():
     
     try:
         # Initialize ORIGINAL NLP components
-        logger.info("\n📦 Loading ORIGINAL NLP components...")
+        logger.info("\n[LOAD] Loading ORIGINAL NLP components...")
         comment_filter = CommentFilter()
         topic_classifier = TopicClassifier()
         sentiment_analyzer = MultilingualSentimentAnalyzer(use_gpu=False)
-        logger.info("✓ Components loaded\n")
+        logger.info("[OK] Components loaded\n")
         
         # Count total comments
         total = db.query(func.count(Comment.id)).scalar()
-        logger.info(f"📊 Total comments to restore: {total}")
+        logger.info(f"[STATS] Total comments to restore: {total}")
         
         # Confirm before proceeding
-        confirm = input("\n⚠️  This will overwrite ALL comment analysis data. Continue? (yes/no): ")
+        confirm = input("\n[WARNING] This will overwrite ALL comment analysis data. Continue? (yes/no): ")
         if confirm.lower() != 'yes':
             logger.info("Cancelled by user")
             return
@@ -88,7 +88,7 @@ def main():
         success_count = 0
         error_count = 0
         
-        logger.info(f"\n🔄 Processing {total_batches} batches...")
+        logger.info(f"\n[PROCESS] Processing {total_batches} batches...")
         
         for batch_num in range(1, total_batches + 1):
             offset = (batch_num - 1) * batch_size
@@ -111,28 +111,28 @@ def main():
             # Commit batch
             try:
                 db.commit()
-                logger.info(f"   ✓ Batch {batch_num} committed")
+                logger.info(f"   [OK] Batch {batch_num} committed")
             except Exception as e:
                 db.rollback()
-                logger.error(f"   ✗ Batch {batch_num} failed: {e}")
+                logger.error(f"   [ERROR] Batch {batch_num} failed: {e}")
         
         # Summary
         logger.info("\n" + "=" * 80)
         logger.info("RESTORE COMPLETE")
         logger.info("=" * 80)
-        logger.info(f"✓ Successfully restored: {success_count}")
-        logger.info(f"✗ Errors: {error_count}")
+        logger.info(f"[SUCCESS] Successfully restored: {success_count}")
+        logger.info(f"[ERROR] Errors: {error_count}")
         logger.info("=" * 80)
         
     except KeyboardInterrupt:
-        logger.warning("\n⚠️  Interrupted by user")
+        logger.warning("\n[WARNING] Interrupted by user")
         db.rollback()
     except Exception as e:
-        logger.error(f"\n❌ Fatal error: {e}")
+        logger.error(f"\n[ERROR] Fatal error: {e}")
         db.rollback()
     finally:
         db.close()
-        logger.info("\n✓ Database connection closed")
+        logger.info("\n[OK] Database connection closed")
 
 
 if __name__ == '__main__':

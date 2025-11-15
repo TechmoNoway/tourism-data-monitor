@@ -25,8 +25,8 @@ class GoogleMapsApifyCollector(BaseCollector):
             self.client = ApifyClient(self.apify_token)
             user_info = self.client.user().get()
             if user_info:
-                self.logger.info(f"✓ Apify authenticated: {user_info.get('username', 'Unknown')}")
-                self.logger.info(f"💰 Balance: ${user_info.get('balance', 0):.2f}")
+                self.logger.info(f"[OK] Apify authenticated: {user_info.get('username', 'Unknown')}")
+                self.logger.info(f"[BALANCE] Balance: ${user_info.get('balance', 0):.2f}")
                 return True
             return False
         except Exception as e:
@@ -53,7 +53,7 @@ class GoogleMapsApifyCollector(BaseCollector):
             for keyword in keywords[:5]:  
                 search_query = f"{keyword} {location}" if location else keyword
                 
-                self.logger.info(f"🔍 Searching Google Maps: {search_query}")
+                self.logger.info(f"[SEARCH] Searching Google Maps: {search_query}")
                 
                 actor_id = "compass/google-maps-extractor"
                 
@@ -73,11 +73,11 @@ class GoogleMapsApifyCollector(BaseCollector):
                 dataset_id = run.get("defaultDatasetId")
                 
                 if not dataset_id:
-                    self.logger.error("❌ No dataset_id returned")
+                    self.logger.error("[ERROR] No dataset_id returned")
                     continue
                 
                 items = self.client.dataset(dataset_id).list_items().items
-                self.logger.info(f"📊 Found {len(items)} places")
+                self.logger.info(f"[STATS] Found {len(items)} places")
                 
                 for item in items:
                     place = self._parse_place(item)
@@ -89,7 +89,7 @@ class GoogleMapsApifyCollector(BaseCollector):
             import traceback
             self.logger.error(traceback.format_exc())
         
-        self.logger.info(f"✓ Found {len(all_places)} Google Maps places")
+        self.logger.info(f"[OK] Found {len(all_places)} Google Maps places")
         return all_places
     
     async def collect_comments(
@@ -103,7 +103,7 @@ class GoogleMapsApifyCollector(BaseCollector):
         reviews = []
         
         try:
-            self.logger.info(f"💬 Collecting reviews for place: {platform_post_id}")
+            self.logger.info(f"[REVIEWS] Collecting reviews for place: {platform_post_id}")
             
             actor_id = "compass/Google-Maps-Reviews-Scraper"
             
@@ -116,24 +116,24 @@ class GoogleMapsApifyCollector(BaseCollector):
                 "skipEmptyReviews": True  # Quality filtering
             }
             
-            self.logger.info(f"💰 Running Google Maps Reviews Scraper (max {limit} reviews)")
+            self.logger.info(f"[BALANCE] Running Google Maps Reviews Scraper (max {limit} reviews)")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
             
             if not dataset_id:
-                self.logger.error("❌ No dataset_id returned from Reviews Scraper")
+                self.logger.error("[ERROR] No dataset_id returned from Reviews Scraper")
                 return reviews
             
             items = self.client.dataset(dataset_id).list_items().items
-            self.logger.info(f"💬 Reviews Scraper returned {len(items)} reviews")
+            self.logger.info(f"[REVIEWS] Reviews Scraper returned {len(items)} reviews")
             
             for item in items:
                 review = self._parse_review(item)
                 if review:
                     reviews.append(review)
             
-            self.logger.info(f"✅ Successfully parsed {len(reviews)} reviews")
+            self.logger.info(f"[SUCCESS] Successfully parsed {len(reviews)} reviews")
             
         except Exception as e:
             self.logger.error(f"Error collecting reviews: {str(e)}")
@@ -264,6 +264,87 @@ class GoogleMapsApifyCollector(BaseCollector):
             return parser.parse(date_str)
         except Exception:
             return None
+    
+    async def auto_discover_attractions(
+        self,
+        province_name: str,
+        main_city: str,
+        attraction_types: List[str],
+        limit_per_type: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Auto-discover tourist attractions in a province using Google Maps search
+        
+        Args:
+            province_name: Province name (e.g., "Khánh Hòa")
+            main_city: Main city to search in (e.g., "Nha Trang")
+            attraction_types: List of attraction categories to search
+                             (e.g., ["tourist attraction", "beach", "temple"])
+            limit_per_type: Maximum results per category (default: 3)
+        
+        Returns:
+            List of attraction dictionaries ready for TouristAttraction model
+            
+        Example:
+            >>> attractions = await collector.auto_discover_attractions(
+            ...     province_name="Khánh Hòa",
+            ...     main_city="Nha Trang",
+            ...     attraction_types=["beach", "temple", "museum"],
+            ...     limit_per_type=5
+            ... )
+            >>> print(f"Found {len(attractions)} attractions")
+        """
+        all_attractions = []
+        discovered_place_ids = set()
+        
+        self.logger.info(f"[SEARCH] Auto-discovering attractions in {province_name} ({main_city})")
+        self.logger.info(f"Categories: {', '.join(attraction_types)}")
+        self.logger.info(f"Limit per type: {limit_per_type}")
+        
+        for idx, attraction_type in enumerate(attraction_types, 1):
+            self.logger.info(f"[{idx}/{len(attraction_types)}] Searching: {attraction_type}")
+            
+            try:
+                # Use existing collect_posts method to search
+                places = await self.collect_posts(
+                    keywords=[attraction_type],
+                    location=main_city,
+                    limit=limit_per_type
+                )
+                
+                self.logger.info(f"   [OK] Found {len(places)} places")
+                
+                # Parse and deduplicate
+                for place in places:
+                    place_id = place.get('post_id')  # Google place_id
+                    
+                    if not place_id or place_id in discovered_place_ids:
+                        continue
+                    
+                    discovered_place_ids.add(place_id)
+                    
+                    # Convert to attraction format
+                    attraction_data = {
+                        'name': place.get('author', 'Unknown Place'),  # author = place name
+                        'province_name': province_name,
+                        'address': place.get('address', ''),
+                        'description': place.get('text') or f"{attraction_type.title()} in {main_city}, {province_name}",
+                        'google_place_id': place_id,
+                        'rating': place.get('rating', 0.0) if place.get('rating') else 0.0,
+                        'phone': place.get('phone', ''),
+                        'website': place.get('website', ''),
+                        'category': attraction_type,
+                        'source': 'google_maps_auto_discovery'
+                    }
+                    
+                    all_attractions.append(attraction_data)
+                    
+            except Exception as e:
+                self.logger.error(f"   [ERROR] Error searching {attraction_type}: {str(e)}")
+                continue
+        
+        self.logger.info(f"[SUCCESS] Discovery complete: {len(all_attractions)} unique attractions found")
+        return all_attractions
 
 
 def create_google_maps_collector(apify_api_token: str) -> GoogleMapsApifyCollector:

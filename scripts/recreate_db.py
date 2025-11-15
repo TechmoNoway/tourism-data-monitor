@@ -21,17 +21,17 @@ def recreate_tables():
         try:
             conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS province_stats CASCADE"))
             conn.commit()
-            print("✓ Materialized views dropped")
+            print("[OK] Materialized views dropped")
         except Exception as e:
             print(f"Warning: {e}")
     
     print("\nDropping all tables...")
     Base.metadata.drop_all(bind=engine)
-    print("✓ Tables dropped")
+    print("[OK] Tables dropped")
     
     print("\nCreating all tables...")
     Base.metadata.create_all(bind=engine)
-    print("✓ Tables created")
+    print("[OK] Tables created")
     
     print("\nDatabase tables recreated successfully!")
 

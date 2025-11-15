@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     
     FACEBOOK_BEST_PAGES: ClassVar[dict] = FB_BEST_PAGES_FULL
 
+    # Scheduler Configuration
+    # Option 1 (USE_SCHEDULER_SERVICE=False): OS-based scheduling (Cron on Linux, Task Scheduler on Windows)
+    # Option 2 (USE_SCHEDULER_SERVICE=True): Python Scheduler (runs as service/background process)
+    USE_SCHEDULER_SERVICE: bool = False  # Set True for Python Scheduler, False for OS-based scheduling
+    
     SCHEDULER_ENABLED: bool = False
     DAILY_COLLECTION_HOUR: int = 2
     DAILY_COLLECTION_MINUTE: int = 0

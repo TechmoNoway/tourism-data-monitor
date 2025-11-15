@@ -23,8 +23,8 @@ class FacebookPostsScraper(BaseCollector):
             self.client = ApifyClient(self.apify_token)
             user_info = self.client.user().get()
             if user_info:
-                self.logger.info(f"✓ Apify authenticated: {user_info.get('username', 'Unknown')}")
-                self.logger.info(f"💰 Balance: ${user_info.get('balance', 0):.2f}")
+                self.logger.info(f"[OK] Apify authenticated: {user_info.get('username', 'Unknown')}")
+                self.logger.info(f"[BALANCE] ${user_info.get('balance', 0):.2f}")
                 return True
             return False
         except Exception as e:
@@ -42,7 +42,7 @@ class FacebookPostsScraper(BaseCollector):
             self.logger.debug(f"Converting string keywords to list: {keywords}")
             keywords = [keywords]
         
-        self.logger.info("🔄 Using 2-actor strategy: Posts + Comments")
+        self.logger.info("[COLLECT] Using 2-actor strategy: Posts + Comments")
         
         posts = await self.collect_posts(keywords=keywords, location=location, limit=limit)
         
@@ -56,7 +56,7 @@ class FacebookPostsScraper(BaseCollector):
             self.logger.warning("No valid post URLs found, skipping comment collection")
             return posts
         
-        self.logger.info(f"📝 Extracted {len(post_urls)} post URLs for comment collection")
+        self.logger.info(f"[EXTRACT] Extracted {len(post_urls)} post URLs for comment collection")
         
         comments = await self._scrape_comments_from_urls(post_urls, comments_per_post)
         
@@ -88,7 +88,7 @@ class FacebookPostsScraper(BaseCollector):
             else:
                 post["comments"] = []
         
-        self.logger.info(f"✅ Merged {total_comments} comments into {posts_with_comments}/{len(posts)} posts")
+        self.logger.info(f"[SUCCESS] Merged {total_comments} comments into {posts_with_comments}/{len(posts)} posts")
         
         return posts
     
@@ -115,10 +115,10 @@ class FacebookPostsScraper(BaseCollector):
                 return all_posts
             
             # Use search-only strategy (proven 50x more effective)
-            self.logger.info(f"🔍 Using SEARCH-ONLY strategy with keywords: {search_keywords}")
+            self.logger.info(f"[SEARCH] Using SEARCH-ONLY strategy with keywords: {search_keywords}")
             search_posts = await self._scrape_from_search(search_keywords[:3], limit)
             all_posts.extend(search_posts)
-            self.logger.info(f"✓ Got {len(search_posts)} posts from search")
+            self.logger.info(f"[OK] Got {len(search_posts)} posts from search")
             
         except Exception as e:
             self.logger.error(f"Error collecting Facebook posts: {str(e)}")
@@ -137,7 +137,7 @@ class FacebookPostsScraper(BaseCollector):
         try:
             actor_id = "apify/facebook-comments-scraper"
             
-            self.logger.info(f"💬 Scraping comments from {len(post_urls)} posts using Comments Scraper")
+            self.logger.info(f"[COMMENTS] Scraping comments from {len(post_urls)} posts using Comments Scraper")
             
             run_input = {
                 "startUrls": [{"url": url} for url in post_urls],
@@ -150,17 +150,17 @@ class FacebookPostsScraper(BaseCollector):
                 }
             }
             
-            self.logger.info(f"💰 Running Apify Comments Scraper for {len(post_urls)} posts")
+            self.logger.info(f"[BALANCE] Running Apify Comments Scraper for {len(post_urls)} posts")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
             
             if not dataset_id:
-                self.logger.error("❌ No dataset_id returned from Comments Scraper")
+                self.logger.error("[FAILED] No dataset_id returned from Comments Scraper")
                 return all_comments
             
             items = self.client.dataset(dataset_id).list_items().items
-            self.logger.info(f"💬 Comments Scraper returned {len(items)} comments")
+            self.logger.info(f"[COMMENTS] Comments Scraper returned {len(items)} comments")
             
             for item in items:
                 try:
@@ -181,7 +181,7 @@ class FacebookPostsScraper(BaseCollector):
                     self.logger.warning(f"Failed to parse comment: {e}")
                     continue
             
-            self.logger.info(f"✅ Successfully parsed {len(all_comments)} comments")
+            self.logger.info(f"[SUCCESS] Successfully parsed {len(all_comments)} comments")
             
         except Exception as e:
             self.logger.error(f"Error scraping comments: {str(e)}")
@@ -201,7 +201,7 @@ class FacebookPostsScraper(BaseCollector):
             
             query = " ".join(search_keywords)
             
-            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}'")
+            self.logger.info(f"[SEARCH] Searching Facebook posts with query: '{query}'")
             
             run_input = {
                 "query": query,
@@ -209,31 +209,31 @@ class FacebookPostsScraper(BaseCollector):
                 "searchType": "top"  
             }
             
-            self.logger.info("💰 Running Apify Posts Search (keyword-mode)")
+            self.logger.info("[BALANCE] Running Apify Posts Search (keyword-mode)")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
             
             if not dataset_id:
-                self.logger.error("❌ No dataset_id returned from Posts Search")
+                self.logger.error("[FAILED] No dataset_id returned from Posts Search")
                 return posts
             
             items = self.client.dataset(dataset_id).list_items().items
-            self.logger.info(f"📊 Posts Search returned {len(items)} items")
+            self.logger.info(f"[STATS] Posts Search returned {len(items)} items")
             
             for i, item in enumerate(items, 1):
                 try:
                     post = self._parse_search_post(item)
                     if post:
-                        self.logger.info(f"✅ Parsed search result {i}: {post.get('post_id', 'unknown')}")
+                        self.logger.info(f"[SUCCESS] Parsed search result {i}: {post.get('post_id', 'unknown')}")
                         posts.append(post)
                     else:
-                        self.logger.warning(f"❌ Failed to parse search result {i}")
+                        self.logger.warning(f"[FAILED] Failed to parse search result {i}")
                 except Exception as e:
                     self.logger.warning(f"Error parsing search result {i}: {e}")
                     continue
             
-            self.logger.info(f"✅ Successfully collected {len(posts)} posts from search")
+            self.logger.info(f"[SUCCESS] Successfully collected {len(posts)} posts from search")
             
         except Exception as e:
             self.logger.error(f"Error in search scraping: {str(e)}")
@@ -308,35 +308,35 @@ class FacebookPostsScraper(BaseCollector):
                 "proxyConfiguration": {"useApifyProxy": True},
             }
 
-            self.logger.info("💰 Running Apify Posts Scraper (page-mode)")
+            self.logger.info("[BALANCE] Running Apify Posts Scraper (page-mode)")
 
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
 
             if not dataset_id:
-                self.logger.error("❌ No dataset_id returned from Apify run")
+                self.logger.error("[FAILED] No dataset_id returned from Apify run")
                 return posts
 
             items = self.client.dataset(dataset_id).list_items().items
-            self.logger.info(f"📊 Dataset returned {len(items)} items")
+            self.logger.info(f"[STATS] Dataset returned {len(items)} items")
 
             if not items:
-                self.logger.warning("⚠️ Dataset is empty! Possible reasons: page private, no posts, or actor couldn't access the page")
+                self.logger.warning("[WARNING] Dataset is empty! Possible reasons: page private, no posts, or actor couldn't access the page")
                 return posts
 
             for i, item in enumerate(items, 1):
-                self.logger.info(f"📝 Processing item {i}/{len(items)}")
-                self.logger.info(f"🔑 Raw item keys: {list(item.keys())}")
+                self.logger.info(f"[PROCESS] Processing item {i}/{len(items)}")
+                self.logger.info(f"[INFO] Raw item keys: {list(item.keys())}")
                 if 'postId' in item or 'id' in item:
                     self.logger.info(f"   Post ID: {item.get('postId') or item.get('id')}")
                 if 'text' in item:
                     self.logger.info(f"   Text preview: {str(item.get('text'))[:100]}...")
                 post = self._parse_apify_post(item)
                 if post:
-                    self.logger.info(f"✅ Successfully parsed post: {post.get('post_id', 'unknown')}")
+                    self.logger.info(f"[SUCCESS] Successfully parsed post: {post.get('post_id', 'unknown')}")
                     posts.append(post)
                 else:
-                    self.logger.warning(f"❌ Failed to parse item {i}")
+                    self.logger.warning(f"[FAILED] Failed to parse item {i}")
                     if any(k in item for k in ("pageUrl", "pageName", "facebookUrl", "pageId", "facebookId")):
                         page_meta = {
                             "is_page_meta": True,
@@ -346,7 +346,7 @@ class FacebookPostsScraper(BaseCollector):
                             "intro": item.get("intro") or item.get("info") or item.get("description") or "",
                         }
                         posts.append(page_meta)
-                        self.logger.info(f"ℹ️ Page metadata collected for {page_meta.get('page_url')}")
+                        self.logger.info(f"[INFO] Page metadata collected for {page_meta.get('page_url')}")
                     else:
                         self.logger.warning(f"Failed to parse item {i}")
                         self.logger.debug(f"Raw item sample: {str(item)[:400]}...")
@@ -354,7 +354,7 @@ class FacebookPostsScraper(BaseCollector):
         except Exception as e:
             msg = str(e)
             if "exceed the memory limit" in msg or "memory limit" in msg:
-                self.logger.error("❌ Apify memory limit prevented launching the actor run.")
+                self.logger.error("[FAILED] Apify memory limit prevented launching the actor run.")
                 self.logger.error("Action needed: free up actor/build memory in your Apify account or upgrade the plan. See: https://console.apify.com/billing/subscription")
                 return posts
 
@@ -380,7 +380,7 @@ class FacebookPostsScraper(BaseCollector):
                 self.logger.warning("Empty query after truncation")
                 return posts
             
-            self.logger.info(f"🔍 Searching Facebook posts with query: '{query}' (max 30 chars)")
+            self.logger.info(f"[SEARCH] Searching Facebook posts with query: '{query}' (max 30 chars)")
             
             run_input = {
                 "query": query,
@@ -388,31 +388,31 @@ class FacebookPostsScraper(BaseCollector):
                 "searchType": "top" 
             }
             
-            self.logger.info("💰 Running Apify Posts Search (keyword-mode)")
+            self.logger.info("[BALANCE] Running Apify Posts Search (keyword-mode)")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             dataset_id = run.get("defaultDatasetId")
             
             if not dataset_id:
-                self.logger.error("❌ No dataset_id returned from Posts Search")
+                self.logger.error("[FAILED] No dataset_id returned from Posts Search")
                 return posts
             
             items = self.client.dataset(dataset_id).list_items().items
-            self.logger.info(f"📊 Posts Search returned {len(items)} items")
+            self.logger.info(f"[STATS] Posts Search returned {len(items)} items")
             
             for i, item in enumerate(items, 1):
                 try:
                     post = self._parse_search_post(item)
                     if post:
-                        self.logger.info(f"✅ Parsed search result {i}: {post.get('post_id', 'unknown')}")
+                        self.logger.info(f"[SUCCESS] Parsed search result {i}: {post.get('post_id', 'unknown')}")
                         posts.append(post)
                     else:
-                        self.logger.warning(f"❌ Failed to parse search result {i}")
+                        self.logger.warning(f"[FAILED] Failed to parse search result {i}")
                 except Exception as e:
                     self.logger.warning(f"Error parsing search result {i}: {e}")
                     continue
             
-            self.logger.info(f"✅ Successfully collected {len(posts)} posts from search")
+            self.logger.info(f"[SUCCESS] Successfully collected {len(posts)} posts from search")
             
         except Exception as e:
             self.logger.error(f"Error in search scraping: {str(e)}")

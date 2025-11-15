@@ -116,9 +116,20 @@ Visit: http://localhost:8000/docs for API documentation
 
 ## 📚 Documentation
 
-- **[APIFY_QUICKSTART.md](docs/APIFY_QUICKSTART.md)** - 5-minute setup guide (START HERE!)
-- **[APIFY_SETUP.md](docs/APIFY_SETUP.md)** - Complete Apify setup guide
+### Getting Started
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
+- **[APIFY_QUICKSTART.md](docs/APIFY_QUICKSTART.md)** - 5-minute Apify setup (START HERE!)
 - **[API_CREDENTIALS_SETUP.md](docs/API_CREDENTIALS_SETUP.md)** - YouTube & Google Maps setup
+
+### Scheduling & Deployment
+- **[SCHEDULER_INTEGRATION.md](SCHEDULER_INTEGRATION.md)** - 🆕 Scheduler integrated with FastAPI
+- **[WINDOWS_DEV_QUICKSTART.md](WINDOWS_DEV_QUICKSTART.md)** - Windows development mode
+- **[SCHEDULER_CONFIG_SUMMARY.md](SCHEDULER_CONFIG_SUMMARY.md)** - Scheduler configuration options
+- **[SCHEDULING_GUIDE.md](SCHEDULING_GUIDE.md)** - Compare scheduling methods
+- **[deployment/DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md)** - Production deployment (Linux)
+
+### Technical Documentation
+- **[APIFY_SETUP.md](docs/APIFY_SETUP.md)** - Complete Apify setup guide
 - **[COLLECTOR_CHANGES.md](docs/COLLECTOR_CHANGES.md)** - Platform changes and migration
 - **[APIFY_INTEGRATION_SUMMARY.md](APIFY_INTEGRATION_SUMMARY.md)** - Technical summary
 
@@ -338,59 +349,6 @@ DAILY_COLLECTION_MINUTE=0
 DEFAULT_POSTS_LIMIT=50
 DEFAULT_COMMENTS_LIMIT=100
 ```
-
----
-
-## 🧪 Testing
-
-### Run Credential Tests
-```bash
-python test/test_credentials.py
-```
-
-### Run Unit Tests (when implemented)
-```bash
-pytest
-```
-
-### Manual Testing
-```bash
-# Test a specific collector
-python examples/collection_demo.py
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Import Errors
-```bash
-# If you see "Import apify_client could not be resolved"
-pip install apify-client
-```
-
-### API Errors
-- **YouTube quota exceeded**: Wait 24 hours or use different API key
-- **Google Maps billing**: Enable billing in Google Cloud Console
-- **Apify insufficient credit**: Add payment method in Apify Console
-
-### Database Issues
-```bash
-# Reset database (CAUTION: deletes all data)
-rm tourism.db
-python -c "from app.database.connection import init_db; init_db()"
-```
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
 
 ---
 

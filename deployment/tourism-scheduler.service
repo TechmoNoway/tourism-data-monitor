@@ -1,0 +1,18 @@
+[Unit]
+Description=Tourism Data Collection Scheduler
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/tourism_data_monitor
+Environment="PATH=/usr/bin:/usr/local/bin"
+Environment="PYTHONPATH=/var/www/tourism_data_monitor"
+ExecStart=/usr/bin/python3 /var/www/tourism_data_monitor/scripts/automated_scheduler.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/tourism-scheduler/output.log
+StandardError=append:/var/log/tourism-scheduler/error.log
+
+[Install]
+WantedBy=multi-user.target

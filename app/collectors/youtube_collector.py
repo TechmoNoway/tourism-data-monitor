@@ -99,8 +99,8 @@ class YouTubeCollector(BaseCollector):
             except HttpError as e:
                 # Check if quota exceeded
                 if e.resp.status == 403 and 'quotaExceeded' in str(e):
-                    self.logger.warning(f"⚠️ YouTube API quota exceeded! Will skip YouTube for now.")
-                    self.logger.info("💡 Tip: YouTube quota resets at midnight PT. Try again tomorrow.")
+                    self.logger.warning(f"[WARNING] YouTube API quota exceeded! Will skip YouTube for now.")
+                    self.logger.info("[TIP] YouTube quota resets at midnight PT. Try again tomorrow.")
                     # Return empty list to let pipeline continue with other platforms
                     return []
                 else:

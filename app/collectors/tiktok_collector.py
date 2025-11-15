@@ -106,7 +106,7 @@ class TikTokApifyCollector(BaseCollector):
             
             self.logger.info(f"🚀 Starting Apify actor {actor_id}")
             self.logger.info(f"📌 Hashtags: {', '.join(hashtags_list)}")
-            self.logger.info(f"📊 Max results: {min(limit, 50)} per hashtag")
+            self.logger.info(f"[STATS] Max results: {min(limit, 50)} per hashtag")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             
@@ -168,9 +168,9 @@ class TikTokApifyCollector(BaseCollector):
                 "commentsPerPage": 30,  # How many to load per page
             }
             
-            self.logger.info(f"💬 Collecting comments using specialized Comments Scraper")
-            self.logger.info(f"📹 Video: {video_url}")
-            self.logger.info(f"🎯 Target: {min(limit, 500)} comments")
+            self.logger.info("[COLLECT] Collecting comments using specialized Comments Scraper")
+            self.logger.info(f"[VIDEO] {video_url}")
+            self.logger.info(f"[TARGET] {min(limit, 500)} comments")
             
             run = self.client.actor(actor_id).call(run_input=run_input)
             
@@ -194,16 +194,16 @@ class TikTokApifyCollector(BaseCollector):
                     break
                             
         except Exception as e:
-            self.logger.error(f"❌ Error collecting TikTok comments: {str(e)}")
-            self.logger.info("💡 Tip: Make sure the video URL is valid and public")
+            self.logger.error(f"[ERROR] Error collecting TikTok comments: {str(e)}")
+            self.logger.info("[TIP] Make sure the video URL is valid and public")
             import traceback
             self.logger.debug(traceback.format_exc())
             
         if all_comments:
-            self.logger.info(f"✅ Collected {len(all_comments)} comments from TikTok")
+            self.logger.info(f"[SUCCESS] Collected {len(all_comments)} comments from TikTok")
         else:
-            self.logger.warning(f"⚠️  No comments collected for {video_url}")
-            self.logger.info("💡 This could be because:")
+            self.logger.warning(f"[WARNING] No comments collected for {video_url}")
+            self.logger.info("[TIP] This could be because:")
             self.logger.info("   1. Video has no comments yet")
             self.logger.info("   2. Comments are disabled for this video")
             self.logger.info("   3. TikTok's anti-bot measures blocked the scraper")

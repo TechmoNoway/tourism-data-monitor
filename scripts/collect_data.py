@@ -18,8 +18,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-TARGET_POSTS_PER_ATTRACTION = 24  
-TARGET_COMMENTS_PER_ATTRACTION = 120 
+# Scale 3x: Previous 24 posts -> 72 posts per attraction
+# Previous 120 comments -> 360 comments per attraction
+TARGET_POSTS_PER_ATTRACTION = 72  
+TARGET_COMMENTS_PER_ATTRACTION = 360 
 PLATFORMS_PRIORITY = ['facebook', 'google_maps', 'youtube', 'tiktok']
 
 
@@ -94,10 +96,12 @@ async def collect_for_attraction_multi_platform(
         print(f"\nTrying {platform.upper()}: Need {comments_needed} more comments...")
         
         try:
+            # Scale 3x: Previous limit 50 -> 100 posts per platform
+            # To reach 72 posts/attraction with multiple platforms
             await pipeline.collect_for_attraction(
                 attraction_id=attraction_id,
                 platforms=[platform], 
-                limit_per_platform=50  
+                limit_per_platform=100  
             )
             
             new_posts = db.query(SocialPost).filter(
@@ -154,7 +158,7 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
         print(f"Target provinces: {', '.join(province_names)}")
     else:
         print("Target: All provinces")
-    print(f"Platform priority: {' → '.join([p.upper() for p in PLATFORMS_PRIORITY])}")
+    print(f"Platform priority: {' -> '.join([p.upper() for p in PLATFORMS_PRIORITY])}")
     print(f"Target: {TARGET_POSTS_PER_ATTRACTION} posts, {TARGET_COMMENTS_PER_ATTRACTION} comments per attraction")
     print("="*70)
     print()
@@ -178,7 +182,7 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
         
         attraction_query = db.query(TouristAttraction).filter(
             TouristAttraction.province_id == province.id,
-            TouristAttraction.is_active == True
+            TouristAttraction.is_active.is_(True)
         )
         
         if not all_attractions:
