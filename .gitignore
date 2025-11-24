@@ -221,3 +221,4 @@ note
 scripts/clear_database.py
 data
 docs/
+training/

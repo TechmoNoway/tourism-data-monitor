@@ -192,22 +192,12 @@ class YouTubeCollector(BaseCollector):
             attraction_id=attraction_id,
             platform="youtube",
             platform_post_id=raw_post['video_id'],
-            author_name=raw_post['channel_title'],
+            post_url=raw_post['url'],  # YouTube video URL
+            title=raw_post['title'],
+            content=raw_post['description'][:500] if raw_post['description'] else None,
+            author=raw_post['channel_title'],
             author_id=raw_post['channel_id'],
-            content=f"{raw_post['title']}\n\n{raw_post['description'][:500]}...", 
-            posted_at=published_at,
-            url=raw_post['url'],
-            likes_count=raw_post['like_count'],
-            comments_count=raw_post['comment_count'],
-            shares_count=0,
-            views_count=raw_post['view_count'],
-            language=self._detect_language(raw_post['title'] + ' ' + raw_post['description']),
-            metadata={
-                'duration': raw_post['duration'],
-                'thumbnail_url': raw_post['thumbnail_url'],
-                'keywords': raw_post['keywords'],
-                'comments_available': raw_post['comments_available']
-            }
+            post_date=published_at
         )
     
     def _convert_raw_comment(self, raw_comment: Dict[str, Any], post_id: int, attraction_id: int) -> CommentCreate:
