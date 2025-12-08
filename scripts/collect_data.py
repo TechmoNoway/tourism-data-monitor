@@ -11,6 +11,7 @@ from app.models.tourist_attraction import TouristAttraction
 from app.models.social_post import SocialPost
 from app.models.comment import Comment
 from app.collectors.data_pipeline import create_data_pipeline
+from app.core.config import settings
 import logging
 
 logging.basicConfig(
@@ -18,11 +19,26 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Scale 3x: Previous 24 posts -> 72 posts per attraction
-# Previous 120 comments -> 360 comments per attraction
-TARGET_POSTS_PER_ATTRACTION = 72  
-TARGET_COMMENTS_PER_ATTRACTION = 360 
-PLATFORMS_PRIORITY = ['facebook', 'google_maps', 'youtube', 'tiktok']
+# Load collection parameters from config
+# Automatically switches between demo mode (weekly updates) and full collection mode
+if settings.FULL_COLLECTION_MODE:
+    TARGET_POSTS_PER_ATTRACTION = settings.FULL_TARGET_POSTS
+    TARGET_COMMENTS_PER_ATTRACTION = settings.FULL_TARGET_COMMENTS
+    PLATFORM_LIMITS = settings.FULL_PLATFORM_LIMITS
+    logging.info("🚀 FULL COLLECTION MODE - High volume data collection")
+else:
+    TARGET_POSTS_PER_ATTRACTION = settings.TARGET_POSTS_PER_ATTRACTION
+    TARGET_COMMENTS_PER_ATTRACTION = settings.TARGET_COMMENTS_PER_ATTRACTION
+    PLATFORM_LIMITS = settings.PLATFORM_LIMITS
+    logging.info("📊 DEMO/WEEKLY UPDATE MODE - Cost-efficient incremental updates")
+
+MAX_ATTRACTIONS_PER_PROVINCE = settings.MAX_ATTRACTIONS_PER_PROVINCE
+
+logging.info(f"Target: {TARGET_COMMENTS_PER_ATTRACTION} comments/attraction, {TARGET_POSTS_PER_ATTRACTION} posts/attraction")
+logging.info(f"Platform limits: {PLATFORM_LIMITS}")
+logging.info(f"Max attractions per province: {MAX_ATTRACTIONS_PER_PROVINCE}")
+
+PLATFORMS_PRIORITY = ['facebook', 'tiktok', 'google_maps', 'youtube']
 
 
 async def collect_for_attraction_multi_platform(
@@ -95,13 +111,14 @@ async def collect_for_attraction_multi_platform(
         
         print(f"\nTrying {platform.upper()}: Need {comments_needed} more comments...")
         
+        # Use platform-specific limit
+        platform_limit = PLATFORM_LIMITS.get(platform, 100)
+        
         try:
-            # Scale 3x: Previous limit 50 -> 100 posts per platform
-            # To reach 72 posts/attraction with multiple platforms
             await pipeline.collect_for_attraction(
                 attraction_id=attraction_id,
                 platforms=[platform], 
-                limit_per_platform=100  
+                limit_per_platform=platform_limit
             )
             
             new_posts = db.query(SocialPost).filter(
@@ -185,8 +202,10 @@ async def run_collection(province_names: List[str] = None, attractions_per_provi
             TouristAttraction.is_active.is_(True)
         )
         
+        # Apply limit from config if not collecting all attractions
         if not all_attractions:
-            attraction_query = attraction_query.limit(attractions_per_province)
+            limit = MAX_ATTRACTIONS_PER_PROVINCE if MAX_ATTRACTIONS_PER_PROVINCE > 0 else attractions_per_province
+            attraction_query = attraction_query.limit(limit)
         
         attractions = attraction_query.all()
         

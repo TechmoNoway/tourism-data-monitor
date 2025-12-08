@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
@@ -10,12 +10,11 @@ class TouristAttraction(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
     category = Column(String(100))
+    tourism_type = Column(String(50))  # beach, mountain, historical, cultural, nature, urban, adventure
     address = Column(String(500))
     province_id = Column(Integer, ForeignKey("provinces.id"))
     description = Column(Text)
-    keywords = Column(Text) #json string of keywords
     google_place_id = Column(String(200))
-    rating = Column(Float, default=0.0)
     total_reviews = Column(Integer, default=0)  
     total_comments = Column(Integer, default=0)  
     is_active = Column(Boolean, default=True)

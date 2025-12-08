@@ -12,6 +12,9 @@ class Province(Base):
     name = Column(String(100), nullable=False)
     code = Column(String(10), unique=True, nullable=False) 
     main_city = Column(String(100))
+    total_attractions = Column(Integer, default=0)  # Total attractions in province
+    total_comments = Column(Integer, default=0)     # Total comments across all attractions
+    total_posts = Column(Integer, default=0)        # Total posts across all attractions
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     attractions = relationship("TouristAttraction", back_populates="province")

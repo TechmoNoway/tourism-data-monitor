@@ -32,6 +32,32 @@ class Settings(BaseSettings):
     DEFAULT_COMMENTS_LIMIT: int = 100
     MAX_COLLECTION_RETRIES: int = 3
 
+    # Real-time Collection Configuration (Weekly Updates)
+    # Adjust these values to control cost during demo
+    # Full collection: TARGET_COMMENTS=200, Weekly update: TARGET_COMMENTS=10-20
+    TARGET_COMMENTS_PER_ATTRACTION: int = 10  # Weekly incremental update (demo mode)
+    TARGET_POSTS_PER_ATTRACTION: int = 5      # Weekly incremental update (demo mode)
+    MAX_ATTRACTIONS_PER_PROVINCE: int = 5     # Limit attractions during demo
+    
+    # Platform-specific limits for weekly updates
+    PLATFORM_LIMITS: ClassVar[dict] = {
+        'facebook': 10,      # Demo: 10 comments per platform
+        'tiktok': 10,        # Demo: 10 comments per platform
+        'google_maps': 10,   # Demo: 10 comments per platform
+        'youtube': 5         # Demo: 5 comments (lower quality)
+    }
+    
+    # For full data collection (disable during demo)
+    FULL_COLLECTION_MODE: bool = False
+    FULL_TARGET_COMMENTS: int = 200  # Used when FULL_COLLECTION_MODE=True
+    FULL_TARGET_POSTS: int = 50      # Used when FULL_COLLECTION_MODE=True
+    FULL_PLATFORM_LIMITS: ClassVar[dict] = {
+        'facebook': 120,
+        'tiktok': 120,
+        'google_maps': 100,
+        'youtube': 50
+    }
+
     # Facebook Collection Settings
     FACEBOOK_COLLECTION_ENABLED: bool = True
     FACEBOOK_POSTS_PER_LOCATION: int = 20

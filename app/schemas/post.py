@@ -14,7 +14,6 @@ class SocialPostBase(BaseModel):
     platform: PlatformEnum
     platform_post_id: str
     post_url: Optional[str] = None
-    title: Optional[str] = None
     content: Optional[str] = None
     author: Optional[str] = None
     author_id: Optional[str] = None
@@ -24,21 +23,12 @@ class SocialPostCreate(SocialPostBase):
     post_date: Optional[datetime] = None
 
 class SocialPostUpdate(BaseModel):
-    title: Optional[str] = None
     content: Optional[str] = None
-    view_count: Optional[int] = None
-    like_count: Optional[int] = None
-    comment_count: Optional[int] = None
-    share_count: Optional[int] = None
     last_updated: Optional[datetime] = None
 
 class SocialPost(SocialPostBase):
     id: int
     attraction_id: int
-    view_count: int
-    like_count: int
-    comment_count: int
-    share_count: int
     post_date: Optional[datetime] = None
     scraped_at: datetime
     last_updated: datetime

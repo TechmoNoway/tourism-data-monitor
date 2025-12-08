@@ -3,11 +3,14 @@
 
 -- 1. TABLE: provinces
 CREATE TABLE provinces (
-    id              SERIAL PRIMARY KEY,
-    name            VARCHAR(100) NOT NULL,
-    code            VARCHAR(10) UNIQUE NOT NULL,
-    main_city       VARCHAR(100),
-    created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    id                  SERIAL PRIMARY KEY,
+    name                VARCHAR(100) NOT NULL,
+    code                VARCHAR(10) UNIQUE NOT NULL,
+    main_city           VARCHAR(100),
+    total_attractions   INTEGER DEFAULT 0,
+    total_comments      INTEGER DEFAULT 0,
+    total_posts         INTEGER DEFAULT 0,
+    created_at          TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2. TABLE: tourist_attractions
@@ -15,22 +18,20 @@ CREATE TABLE tourist_attractions (
     id                SERIAL PRIMARY KEY,
     name              VARCHAR(200) NOT NULL,
     category          VARCHAR(100),
+    tourism_type      VARCHAR(50),  -- beach, mountain, historical, cultural, nature, urban, adventure
     address           VARCHAR(500),
     province_id       INTEGER NOT NULL,
     description       TEXT,
-    keywords          TEXT,                             -- JSON string of keywords
     google_place_id   VARCHAR(200),
-    rating            DOUBLE PRECISION DEFAULT 0.0,      -- Float in SQLAlchemy
     total_reviews     INTEGER DEFAULT 0,
+    total_comments    INTEGER DEFAULT 0,                 -- Social media comments count
     is_active         BOOLEAN DEFAULT TRUE,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    total_comments    INTEGER DEFAULT 0,                 -- Social media comments count (added later)
     
     FOREIGN KEY (province_id) REFERENCES provinces(id) ON DELETE CASCADE,
     
     -- Constraints
-    CONSTRAINT rating_range CHECK (rating >= 0.0 AND rating <= 5.0),
     CONSTRAINT reviews_positive CHECK (total_reviews >= 0),
     CONSTRAINT comments_positive CHECK (total_comments >= 0)
 );
@@ -41,15 +42,10 @@ CREATE TABLE social_posts (
     platform            VARCHAR(50) NOT NULL,
     platform_post_id    VARCHAR(200) NOT NULL,
     post_url            VARCHAR(1000),
-    title               VARCHAR(300),
     content             TEXT,
     author              VARCHAR(200),
     author_id           VARCHAR(200),
     attraction_id       INTEGER NOT NULL,
-    view_count          INTEGER DEFAULT 0,
-    like_count          INTEGER DEFAULT 0,
-    comment_count       INTEGER DEFAULT 0,
-    share_count         INTEGER DEFAULT 0,
     post_date           TIMESTAMP WITH TIME ZONE,
     scraped_at          TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_updated        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -58,12 +54,6 @@ CREATE TABLE social_posts (
     
     -- Constraints
     CONSTRAINT platform_values CHECK (platform IN ('youtube', 'facebook', 'tiktok', 'google_review', 'google_maps')),
-    CONSTRAINT positive_counts CHECK (
-        view_count >= 0 AND 
-        like_count >= 0 AND 
-        comment_count >= 0 AND 
-        share_count >= 0
-    ),
     
     -- Unique constraint for platform + post_id
     UNIQUE(platform, platform_post_id)
