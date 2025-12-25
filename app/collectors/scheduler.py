@@ -7,18 +7,23 @@ try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
+    APSCHEDULER_AVAILABLE = True
 except ImportError:
+    APSCHEDULER_AVAILABLE = False
     logging.warning("APScheduler not installed. Run: pip install apscheduler")
 
-from app.collectors.data_pipeline import create_data_pipeline
+from app.collectors.smart_collection_pipeline import create_smart_pipeline
 
 
 class CollectionScheduler:
    
     def __init__(self, api_credentials: Dict[str, Any]):
         self.logger = logging.getLogger("collection_scheduler")
-        self.scheduler = AsyncIOScheduler()
-        self.pipeline = create_data_pipeline(**api_credentials)
+        if APSCHEDULER_AVAILABLE:
+            self.scheduler = AsyncIOScheduler()
+        else:
+            self.scheduler = None
+        self.pipeline = create_smart_pipeline(**api_credentials)
         self.is_running = False
         
         # Collection statistics
@@ -29,11 +34,16 @@ class CollectionScheduler:
             'last_run': None,
             'last_success': None,
             'total_posts_collected': 0,
-            'total_comments_collected': 0
+            'total_comments_collected': 0,
+            'total_comments_analyzed': 0,
+            'total_images_collected': 0
         }
     
     def start(self):
         """Start the scheduler"""
+        if not APSCHEDULER_AVAILABLE:
+            self.logger.error("APScheduler not available")
+            return
         if not self.is_running:
             self.scheduler.start()
             self.is_running = True
@@ -41,6 +51,8 @@ class CollectionScheduler:
         
     def stop(self):
         """Stop the scheduler"""
+        if not APSCHEDULER_AVAILABLE:
+            return
         if self.is_running:
             self.scheduler.shutdown()
             self.is_running = False
@@ -62,6 +74,10 @@ class CollectionScheduler:
             provinces: List of province IDs to collect (None = all)
             platforms: List of platforms to use (None = all available)
         """
+        if not APSCHEDULER_AVAILABLE:
+            self.logger.error("APScheduler not available")
+            return
+            
         trigger = CronTrigger(hour=hour, minute=minute)
         
         self.scheduler.add_job(
@@ -81,6 +97,10 @@ class CollectionScheduler:
         platforms: Optional[List[str]] = None,
         limit_per_platform: int = 10
     ):
+        if not APSCHEDULER_AVAILABLE:
+            self.logger.error("APScheduler not available")
+            return
+            
         trigger = IntervalTrigger(hours=1)
         
         self.scheduler.add_job(
@@ -100,6 +120,10 @@ class CollectionScheduler:
         hour: int = 1,
         minute: int = 0
     ):
+        if not APSCHEDULER_AVAILABLE:
+            self.logger.error("APScheduler not available")
+            return
+            
         trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
         
         self.scheduler.add_job(
@@ -117,50 +141,78 @@ class CollectionScheduler:
         provinces: Optional[List[int]] = None,
         platforms: Optional[List[str]] = None
     ):
-        self.logger.info("Starting daily collection job")
+        """
+        Smart daily collection with:
+        - Multi-platform priority
+        - Target-based stopping
+        - Automatic analysis
+        - Image collection
+        """
+        self.logger.info("🚀 Starting smart daily collection job")
         self.stats['total_runs'] += 1
         self.stats['last_run'] = datetime.utcnow().isoformat()
         
         try:
+            total_posts = 0
+            total_comments = 0
+            
             if provinces:
-                results = {
-                    'total_posts': 0,
-                    'total_comments': 0,
-                    'provinces_processed': 0
-                }
-                
                 for province_id in provinces:
                     try:
-                        province_result = await self.pipeline.collect_for_province(
-                            province_id, 
-                            platforms, 
-                            limit_per_attraction=20
+                        from app.core.config import settings
+                        max_attractions = settings.MAX_ATTRACTIONS_PER_PROVINCE if settings.MAX_ATTRACTIONS_PER_PROVINCE > 0 else None
+                        
+                        result = await self.pipeline.collect_for_province(
+                            province_id,
+                            max_attractions=max_attractions
                         )
                         
-                        results['total_posts'] += province_result['total_posts']
-                        results['total_comments'] += province_result['total_comments']
-                        results['provinces_processed'] += 1
+                        total_posts += result['total_posts_collected']
+                        total_comments += result['total_comments_collected']
                         
                         await asyncio.sleep(5)
                         
                     except Exception as e:
                         self.logger.error(f"Error in daily collection for province {province_id}: {str(e)}")
             else:
-                results = await self.pipeline.collect_all_provinces(
-                    platforms, 
-                    limit_per_attraction=15
-                )
+                # Collect for all provinces
+                from app.database.connection import get_db
+                from app.models.province import Province
+                
+                db = next(get_db())
+                try:
+                    all_provinces = db.query(Province).all()
+                    
+                    for province in all_provinces:
+                        try:
+                            from app.core.config import settings
+                            max_attractions = settings.MAX_ATTRACTIONS_PER_PROVINCE if settings.MAX_ATTRACTIONS_PER_PROVINCE > 0 else None
+                            
+                            result = await self.pipeline.collect_for_province(
+                                province.id,
+                                max_attractions=max_attractions
+                            )
+                            
+                            total_posts += result['total_posts_collected']
+                            total_comments += result['total_comments_collected']
+                            
+                            await asyncio.sleep(5)
+                            
+                        except Exception as e:
+                            self.logger.error(f"Error collecting for province {province.name}: {e}")
+                finally:
+                    db.close()
             
             self.stats['successful_runs'] += 1
             self.stats['last_success'] = datetime.now(timezone.utc).isoformat()
-            self.stats['total_posts_collected'] += results['total_posts']
-            self.stats['total_comments_collected'] += results['total_comments']
+            self.stats['total_posts_collected'] += total_posts
+            self.stats['total_comments_collected'] += total_comments
             
-            self.logger.info(f"Daily collection completed: {results['total_posts']} posts, {results['total_comments']} comments")
+            self.logger.info(f"✓ Daily collection completed: {total_posts} posts, {total_comments} comments")
             
         except Exception as e:
             self.stats['failed_runs'] += 1
-            self.logger.error(f"Daily collection job failed: {str(e)}")
+            self.logger.error(f"❌ Daily collection job failed: {str(e)}")
     
     async def _hourly_collection_job(
         self, 
@@ -168,7 +220,8 @@ class CollectionScheduler:
         platforms: Optional[List[str]] = None,
         limit_per_platform: int = 10
     ):
-        self.logger.info(f"Starting hourly collection for {len(attraction_ids)} attractions")
+        """Smart hourly collection for hot attractions"""
+        self.logger.info(f"🔥 Starting hourly collection for {len(attraction_ids)} hot attractions")
         
         try:
             total_posts = 0
@@ -177,13 +230,12 @@ class CollectionScheduler:
             for attraction_id in attraction_ids:
                 try:
                     result = await self.pipeline.collect_for_attraction(
-                        attraction_id, 
-                        platforms, 
-                        limit_per_platform
+                        attraction_id,
+                        force_collect=True  # Force collection even if target reached
                     )
                     
-                    total_posts += result['total_posts']
-                    total_comments += result['total_comments']
+                    total_posts += result['posts_collected']
+                    total_comments += result['comments_collected']
                     
                     await asyncio.sleep(2)
                     
@@ -193,28 +245,52 @@ class CollectionScheduler:
             self.stats['total_posts_collected'] += total_posts
             self.stats['total_comments_collected'] += total_comments
             
-            self.logger.info(f"Hourly collection completed: {total_posts} posts, {total_comments} comments")
+            self.logger.info(f"✓ Hourly collection completed: {total_posts} posts, {total_comments} comments")
             
         except Exception as e:
-            self.logger.error(f"Hourly collection job failed: {str(e)}")
+            self.logger.error(f"❌ Hourly collection job failed: {str(e)}")
     
     async def _weekly_full_collection_job(self):
-        self.logger.info("Starting weekly full collection job")
+        """Weekly full collection with high targets"""
+        self.logger.info("📅 Starting weekly full collection job")
         
         try:
-            results = await self.pipeline.collect_all_provinces(
-                platforms=None,  
-                limit_per_attraction=50 
-            )
+            from app.database.connection import get_db
+            from app.models.province import Province
             
-            # Update statistics
-            self.stats['total_posts_collected'] += results['total_posts']
-            self.stats['total_comments_collected'] += results['total_comments']
-            
-            self.logger.info(f"Weekly full collection completed: {results['total_posts']} posts, {results['total_comments']} comments")
+            db = next(get_db())
+            try:
+                provinces = db.query(Province).all()
+                
+                total_posts = 0
+                total_comments = 0
+                
+                for province in provinces:
+                    try:
+                        # Collect for all attractions in province
+                        result = await self.pipeline.collect_for_province(
+                            province.id,
+                            max_attractions=None  # No limit for weekly full collection
+                        )
+                        
+                        total_posts += result['total_posts_collected']
+                        total_comments += result['total_comments_collected']
+                        
+                        await asyncio.sleep(10)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error in weekly collection for {province.name}: {e}")
+                
+                self.stats['total_posts_collected'] += total_posts
+                self.stats['total_comments_collected'] += total_comments
+                
+                self.logger.info(f"✓ Weekly full collection completed: {total_posts} posts, {total_comments} comments")
+                
+            finally:
+                db.close()
             
         except Exception as e:
-            self.logger.error(f"Weekly full collection job failed: {str(e)}")
+            self.logger.error(f"❌ Weekly full collection job failed: {str(e)}")
     
     def run_manual_collection(
         self, 
@@ -222,14 +298,49 @@ class CollectionScheduler:
         target_id: Optional[int] = None,
         platforms: Optional[List[str]] = None
     ) -> Dict[str, Any]:
+        """
+        Run manual collection with smart pipeline
+        
+        Args:
+            collection_type: "province", "attraction", or "all_provinces"
+            target_id: ID for province or attraction
+            platforms: (deprecated - smart pipeline handles this)
+        """
 
         async def _run_collection():
             if collection_type == "province" and target_id:
-                return await self.pipeline.collect_for_province(target_id, platforms, 30)
+                from app.core.config import settings
+                max_attractions = settings.MAX_ATTRACTIONS_PER_PROVINCE if settings.MAX_ATTRACTIONS_PER_PROVINCE > 0 else None
+                return await self.pipeline.collect_for_province(target_id, max_attractions=max_attractions)
             elif collection_type == "attraction" and target_id:
-                return await self.pipeline.collect_for_attraction(target_id, platforms, 50)
+                return await self.pipeline.collect_for_attraction(target_id, force_collect=False)
             elif collection_type == "all_provinces":
-                return await self.pipeline.collect_all_provinces(platforms, 20)
+                from app.database.connection import get_db
+                from app.models.province import Province
+                
+                db = next(get_db())
+                try:
+                    provinces = db.query(Province).all()
+                    results = {
+                        'provinces': [],
+                        'total_posts_collected': 0,
+                        'total_comments_collected': 0
+                    }
+                    
+                    for province in provinces:
+                        from app.core.config import settings
+                        max_attractions = settings.MAX_ATTRACTIONS_PER_PROVINCE if settings.MAX_ATTRACTIONS_PER_PROVINCE > 0 else None
+                        
+                        result = await self.pipeline.collect_for_province(province.id, max_attractions=max_attractions)
+                        results['provinces'].append(result)
+                        results['total_posts_collected'] += result['total_posts_collected']
+                        results['total_comments_collected'] += result['total_comments_collected']
+                        
+                        await asyncio.sleep(5)
+                    
+                    return results
+                finally:
+                    db.close()
             else:
                 raise ValueError(f"Invalid collection type: {collection_type}")
         
@@ -238,8 +349,15 @@ class CollectionScheduler:
         
         try:
             result = loop.run_until_complete(_run_collection())
-            self.stats['total_posts_collected'] += result.get('total_posts', 0)
-            self.stats['total_comments_collected'] += result.get('total_comments', 0)
+            
+            # Update stats
+            if collection_type in ["province", "all_provinces"]:
+                self.stats['total_posts_collected'] += result.get('total_posts_collected', 0)
+                self.stats['total_comments_collected'] += result.get('total_comments_collected', 0)
+            else:  # attraction
+                self.stats['total_posts_collected'] += result.get('posts_collected', 0)
+                self.stats['total_comments_collected'] += result.get('comments_collected', 0)
+            
             return result
         except Exception as e:
             self.logger.error(f"Manual collection failed: {str(e)}")
@@ -249,6 +367,14 @@ class CollectionScheduler:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get scheduler statistics"""
+        if not APSCHEDULER_AVAILABLE:
+            return {
+                **self.stats,
+                'is_running': False,
+                'available_platforms': self.pipeline.get_available_platforms(),
+                'scheduled_jobs': []
+            }
+            
         return {
             **self.stats,
             'is_running': self.is_running,
@@ -265,6 +391,9 @@ class CollectionScheduler:
     
     def get_job_info(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific job"""
+        if not APSCHEDULER_AVAILABLE or not self.scheduler:
+            return None
+            
         job = self.scheduler.get_job(job_id)
         if job:
             return {
@@ -277,6 +406,9 @@ class CollectionScheduler:
     
     def remove_job(self, job_id: str) -> bool:
         """Remove a scheduled job"""
+        if not APSCHEDULER_AVAILABLE or not self.scheduler:
+            return False
+            
         try:
             self.scheduler.remove_job(job_id)
             self.logger.info(f"Removed job: {job_id}")

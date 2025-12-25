@@ -237,8 +237,25 @@ class BaseCollector(ABC):
                 )
 
                 if existing_comment:
-                    self.logger.info(
-                        f"Comment {comment_data.platform_comment_id} already exists, skipping"
+                    self.logger.debug(
+                        f"Comment {comment_data.platform_comment_id} already exists (ID: {existing_comment.id}), skipping duplicate"
+                    )
+                    continue
+                
+                # Additional duplicate check by content similarity (for cases where platform_comment_id might differ)
+                similar_comment = (
+                    db.query(Comment)
+                    .filter(
+                        Comment.post_id == post_id,
+                        Comment.content == comment_data.content,
+                        Comment.author_name == comment_data.author_name
+                    )
+                    .first()
+                )
+                
+                if similar_comment:
+                    self.logger.debug(
+                        f"Comment with same content already exists (ID: {similar_comment.id}), skipping duplicate"
                     )
                     continue
 
