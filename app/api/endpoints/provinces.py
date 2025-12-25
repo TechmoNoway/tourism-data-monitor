@@ -12,9 +12,15 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[Province])
-async def get_provinces(db: Session = Depends(get_db)):
+async def get_provinces(
+    search: Optional[str] = Query(None, description="Search by province name"),
+    db: Session = Depends(get_db)
+):
     service = ProvinceService(db)
-    provinces = service.get_all_provinces()
+    if search:
+        provinces = service.search_provinces(search)
+    else:
+        provinces = service.get_all_provinces()
     return provinces
 
 
@@ -99,8 +105,6 @@ async def get_province_attractions_by_code(
 
 @router.post("/", response_model=Province)
 async def create_province(province: ProvinceCreate, db: Session = Depends(get_db)):
-    
-    # TODO: Add authentication/authorization
     service = ProvinceService(db)
     
     existing = service.get_province_by_code(province.code)
@@ -109,16 +113,12 @@ async def create_province(province: ProvinceCreate, db: Session = Depends(get_db
             status_code=400, 
             detail=f"Province with code '{province.code}' already exists"
         )
-
-    # new_province = service.create_province(province)
-    # return new_province
     
     raise HTTPException(status_code=501, detail="Create province not implemented yet")
 
 
 @router.post("/init-sample-data", response_model=ApiResponse)
 async def init_sample_provinces(db: Session = Depends(get_db)):
-    # TODO: Implement sample data creation
     sample_provinces = [
         {"name": "Lâm Đồng", "code": "LD", "main_city": "Đà Lạt"},
         {"name": "Đà Nẵng", "code": "DN", "main_city": "Đà Nẵng"},

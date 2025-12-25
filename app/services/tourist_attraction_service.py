@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, text
 from app.models.tourist_attraction import TouristAttraction
 from app.models.province import Province
 from app.schemas.attraction import (
@@ -14,6 +14,19 @@ from app.schemas.attraction import (
 class TouristAttractionService:
     def __init__(self, db: Session):
         self.db = db
+        self._unaccent_available = None
+    
+    def _check_unaccent_available(self) -> bool:
+        """Check if unaccent extension is available"""
+        if self._unaccent_available is None:
+            try:
+                self.db.execute(text("SELECT unaccent('test');"))
+                self._unaccent_available = True
+            except Exception:
+                # Rollback the failed transaction
+                self.db.rollback()
+                self._unaccent_available = False
+        return self._unaccent_available
     
     def get_all_attractions(self, active_only: bool = True) -> List[AttractionSchema]:
         query = self.db.query(TouristAttraction)
@@ -92,11 +105,20 @@ class TouristAttractionService:
             conditions.append(TouristAttraction.is_active.is_(True))
         
         if search_term:
-            search_condition = or_(
-                TouristAttraction.name.ilike(f"%{search_term}%"),
-                TouristAttraction.description.ilike(f"%{search_term}%"),
-                TouristAttraction.address.ilike(f"%{search_term}%")
-            )
+            if self._check_unaccent_available():
+                # Use unaccent extension for Vietnamese diacritics
+                search_condition = or_(
+                    func.unaccent(TouristAttraction.name).ilike(func.unaccent(f"%{search_term}%")),
+                    func.unaccent(TouristAttraction.description).ilike(func.unaccent(f"%{search_term}%")),
+                    func.unaccent(TouristAttraction.address).ilike(func.unaccent(f"%{search_term}%"))
+                )
+            else:
+                # Fallback to regular ilike
+                search_condition = or_(
+                    TouristAttraction.name.ilike(f"%{search_term}%"),
+                    TouristAttraction.description.ilike(f"%{search_term}%"),
+                    TouristAttraction.address.ilike(f"%{search_term}%")
+                )
             conditions.append(search_condition)
         
         if province_id:

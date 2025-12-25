@@ -73,7 +73,6 @@ async def create_attraction(
     attraction: TouristAttractionCreate, 
     db: Session = Depends(get_db)
 ):
-    # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
     try:
@@ -89,7 +88,6 @@ async def update_attraction(
     update_data: TouristAttractionUpdate,
     db: Session = Depends(get_db)
 ):
-    # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
     updated_attraction = service.update_attraction(attraction_id, update_data)
@@ -101,7 +99,6 @@ async def update_attraction(
 
 @router.delete("/{attraction_id}", response_model=ApiResponse)
 async def deactivate_attraction(attraction_id: int, db: Session = Depends(get_db)):
-    # TODO: Add authentication/authorization
     service = TouristAttractionService(db)
     
     success = service.deactivate_attraction(attraction_id)

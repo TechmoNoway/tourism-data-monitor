@@ -15,8 +15,8 @@ from app.schemas.comment import CommentCreate
 class GoogleMapsApifyCollector(BaseCollector):
 
     
-    def __init__(self, apify_api_token: str):
-        super().__init__("google_maps")
+    def __init__(self, apify_api_token: str, skip_sentiment: bool = False):
+        super().__init__("google_maps", skip_sentiment=skip_sentiment)
         self.apify_token = apify_api_token
         self.client = None
         
@@ -63,7 +63,7 @@ class GoogleMapsApifyCollector(BaseCollector):
                     "language": "vi",
                     "includeWebResults": False,
                     "includeHistogram": False,
-                    "maxImages": 1,  
+                    "maxImages": 3,  # Get up to 3 images per place
                     "maxReviews": 0  
                 }
                 

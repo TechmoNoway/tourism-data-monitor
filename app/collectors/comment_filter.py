@@ -58,6 +58,26 @@ class CommentFilter:
             'first', 'đầu', '1st',
         }
         
+        # YouTube-specific patterns: comments praising video/vlogger instead of attraction
+        self.youtube_vlogger_praise = {
+            # Praise for video quality
+            'video hay', 'video đẹp', 'video tuyệt', 'nice video', 'great video', 
+            'beautiful video', 'amazing video', 'awesome video',
+            'quay đẹp', 'quay hay', 'quay tuyệt', 'good quality', 'high quality',
+            'chất lượng tốt', 'chất lượng cao',
+            
+            # Praise for vlogger
+            'youtuber', 'vlogger', 'kênh hay', 'kênh tuyệt', 'nice channel',
+            'great channel', 'theo dõi kênh', 'subscribe', 'đăng ký kênh',
+            'anh ơi', 'chị ơi', 'bạn ơi', 'idol', 'fan', 'ủng hộ',
+            
+            # Video-specific phrases (not attraction-specific)
+            'clip hay', 'clip đẹp', 'bài hay', 'hay quá', 'tuyệt vời quá',
+            'mình xem', 'mình thấy', 'xem hay', 'xem đi', 'xem đã',
+            'like rồi', 'đã like', 'đã subscribe', 'bấm like', 'ấn like',
+            'đã theo dõi', 'đã đăng ký',
+        }
+        
     def is_valid_comment(self, comment_text: str, author_name: Optional[str] = None) -> tuple[bool, str]:
         if not comment_text:
             return False, "empty_content"
@@ -78,6 +98,23 @@ class CommentFilter:
         
         if len(words) == 1 and words[0].lower() in self.meaningless_words:
             return False, f"meaningless_word_{words[0]}"
+        
+        # Check for YouTube vlogger/video praise (not about attraction)
+        vlogger_praise_found = []
+        for phrase in self.youtube_vlogger_praise:
+            if phrase in text_lower:
+                vlogger_praise_found.append(phrase)
+        
+        # If comment is mostly about video/vlogger and doesn't mention tourism/attraction
+        if vlogger_praise_found:
+            tourism_indicators = ['du lịch', 'travel', 'đẹp', 'beautiful', 'tham quan', 
+                                'visit', 'nên đi', 'should go', 'trải nghiệm', 'experience',
+                                'địa điểm', 'place', 'đi chơi', 'khách sạn', 'hotel']
+            has_tourism_content = any(indicator in text_lower for indicator in tourism_indicators)
+            
+            # If only praising video/vlogger without tourism content
+            if not has_tourism_content and len(vlogger_praise_found) >= 1:
+                return False, f"youtube_vlogger_praise_{vlogger_praise_found[0]}"
         
         spam_found = []
         for keyword in self.spam_keywords:

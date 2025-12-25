@@ -16,7 +16,7 @@ from app.services.topic_classifier import TopicClassifier
 
 class BaseCollector(ABC):
 
-    def __init__(self, platform_name: str, min_relevance_score: float = 0.0):
+    def __init__(self, platform_name: str, min_relevance_score: float = 0.0, skip_sentiment: bool = False):
         """
         Initialize base collector.
         
@@ -25,17 +25,25 @@ class BaseCollector(ABC):
             min_relevance_score: Minimum relevance score to keep posts (0-1).
                                  Default 0.0 (disabled) for testing.
                                  Increase to 0.3+ for production filtering.
+            skip_sentiment: Skip sentiment analyzer initialization (for raw data collection)
         """
         self.platform_name = platform_name
         self.logger = logging.getLogger(f"collector.{platform_name}")
         self.relevance_filter = RelevanceFilter(min_relevance_score=min_relevance_score)
         self.keyword_optimizer = PlatformKeywordOptimizer()
         self.comment_filter = CommentFilter(min_length=2, min_chars=5)
-        self.sentiment_analyzer = MultilingualSentimentAnalyzer()
-        self.topic_classifier = TopicClassifier()
-        self.min_relevance_score = min_relevance_score
+        self.skip_sentiment = skip_sentiment
         
-        self.logger.info(f"Initialized {platform_name} collector with sentiment analysis + topic classification")
+        if not skip_sentiment:
+            self.sentiment_analyzer = MultilingualSentimentAnalyzer()
+            self.topic_classifier = TopicClassifier()
+            self.logger.info(f"Initialized {platform_name} collector with sentiment analysis + topic classification")
+        else:
+            self.sentiment_analyzer = None
+            self.topic_classifier = None
+            self.logger.info(f"Initialized {platform_name} collector (raw data mode - no sentiment analysis)")
+        
+        self.min_relevance_score = min_relevance_score
 
     @abstractmethod
     async def collect_posts(

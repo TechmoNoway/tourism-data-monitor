@@ -84,6 +84,10 @@ def analyze_comments(
                 comment.analyzed_at = datetime.now()
                 comment.is_valid = result['word_count'] >= 3  # Minimum 3 words
                 
+                # Mark as meaningful if valid and has proper sentiment
+                if comment.is_valid and comment.sentiment in ['positive', 'neutral', 'negative']:
+                    comment.is_meaningful = True
+                
                 # Topic classification
                 topics = topic_classifier.classify_topics(comment.content, comment.language)
                 comment.topics = topics if topics else None

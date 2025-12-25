@@ -1,12 +1,11 @@
 import re
+import os
 from typing import Dict, List, Optional
 import logging
 
-try:
-    from transformers import pipeline
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
+import torch
+import torch.nn as nn
+from transformers import AutoTokenizer, AutoModel
 
 try:
     from langdetect import detect, LangDetectException
@@ -17,54 +16,108 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class PhoBERTSentimentClassifier(nn.Module):
+    """PhoBERT with sentiment classification head"""
+    
+    def __init__(self, n_classes: int = 3, dropout: float = 0.3):
+        super(PhoBERTSentimentClassifier, self).__init__()
+        self.phobert = AutoModel.from_pretrained('vinai/phobert-base')
+        self.dropout = nn.Dropout(dropout)
+        self.classifier = nn.Linear(self.phobert.config.hidden_size, n_classes)
+        
+    def forward(self, input_ids, attention_mask):
+        outputs = self.phobert(
+            input_ids=input_ids,
+            attention_mask=attention_mask
+        )
+        pooled_output = outputs[1]  # [CLS] token representation
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        return logits
+
+
+class XLMRobertaSentimentClassifier(nn.Module):
+    """XLM-RoBERTa with sentiment classification head"""
+    
+    def __init__(self, n_classes: int = 3, dropout: float = 0.3):
+        super(XLMRobertaSentimentClassifier, self).__init__()
+        self.xlm_roberta = AutoModel.from_pretrained('xlm-roberta-base')
+        self.dropout = nn.Dropout(dropout)
+        self.classifier = nn.Linear(self.xlm_roberta.config.hidden_size, n_classes)
+        
+    def forward(self, input_ids, attention_mask):
+        outputs = self.xlm_roberta(
+            input_ids=input_ids,
+            attention_mask=attention_mask
+        )
+        pooled_output = outputs[0][:, 0, :]  # [CLS] token representation
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        return logits
+
+
 class MultilingualSentimentAnalyzer:
     """
     Multilingual sentiment analyzer with support for:
-    - Vietnamese (PhoBERT)
-    - 100+ languages (XLM-RoBERTa)
+    - Vietnamese (PhoBERT - custom trained)
+    - 100+ languages (XLM-RoBERTa - custom trained)
     - Rule-based fallback
     - Sentiment flipper handling ("nhưng", "but", "however")
     """
     
     def __init__(self, use_gpu: bool = False):
-        if not TRANSFORMERS_AVAILABLE:
-            raise ImportError(
-                "transformers library is required. Install with: pip install transformers torch"
-            )
-        
         if not LANGDETECT_AVAILABLE:
             raise ImportError(
                 "langdetect library is required. Install with: pip install langdetect"
             )
         
         self.use_gpu = use_gpu
-        device = 0 if use_gpu else -1
+        self.device = torch.device('cuda' if use_gpu and torch.cuda.is_available() else 'cpu')
         
-        logger.info("Initializing sentiment analysis models...")
+        logger.info(f"Initializing sentiment analysis models on {self.device}...")
+        
+        # Sentiment labels
+        self.sentiments = ['positive', 'neutral', 'negative']
         
         # PhoBERT for Vietnamese
+        self.vi_model = None
+        self.vi_tokenizer = None
         try:
-            self.vi_analyzer = pipeline(
-                "sentiment-analysis",
-                model="wonrax/phobert-base-vietnamese-sentiment",
-                device=device
-            )
-            logger.info("✓ PhoBERT model loaded (Vietnamese)")
+            phobert_path = 'training/models/phobert_sentiment_best_model.pt'
+            if os.path.exists(phobert_path):
+                self.vi_tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
+                self.vi_model = PhoBERTSentimentClassifier(n_classes=3)
+                
+                checkpoint = torch.load(phobert_path, map_location=self.device)
+                self.vi_model.load_state_dict(checkpoint['model_state_dict'])
+                self.vi_model = self.vi_model.to(self.device)
+                self.vi_model.eval()
+                
+                logger.info(f"✓ PhoBERT sentiment model loaded (F1: {checkpoint['f1_macro']:.4f})")
+            else:
+                logger.warning(f"PhoBERT model not found at {phobert_path}")
         except Exception as e:
             logger.error(f"Failed to load PhoBERT: {e}")
-            self.vi_analyzer = None
         
         # XLM-RoBERTa for other languages
+        self.xlm_model = None
+        self.xlm_tokenizer = None
         try:
-            self.multilingual_analyzer = pipeline(
-                "sentiment-analysis",
-                model="nlptown/bert-base-multilingual-uncased-sentiment",
-                device=device
-            )
-            logger.info("✓ Multilingual BERT model loaded (100+ languages)")
+            xlm_path = 'training/models/xlm_sentiment_best_model.pt'
+            if os.path.exists(xlm_path):
+                self.xlm_tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
+                self.xlm_model = XLMRobertaSentimentClassifier(n_classes=3)
+                
+                checkpoint = torch.load(xlm_path, map_location=self.device)
+                self.xlm_model.load_state_dict(checkpoint['model_state_dict'])
+                self.xlm_model = self.xlm_model.to(self.device)
+                self.xlm_model.eval()
+                
+                logger.info(f"✓ XLM-RoBERTa sentiment model loaded (F1: {checkpoint['f1_macro']:.4f})")
+            else:
+                logger.warning(f"XLM-RoBERTa model not found at {xlm_path}")
         except Exception as e:
-            logger.error(f"Failed to load multilingual model: {e}")
-            self.multilingual_analyzer = None
+            logger.error(f"Failed to load XLM-RoBERTa: {e}")
         
         # Sentiment flipper keywords (priority to text AFTER these words)
         self.flipper_keywords = {
@@ -226,31 +279,40 @@ class MultilingualSentimentAnalyzer:
     
     def _analyze_single_part(self, text: str, language: str, word_count: int) -> Dict:
         """Analyze a single text part (used for both flipper and non-flipper cases)"""
-        if language == 'vi' and self.vi_analyzer:
+        if language == 'vi' and self.vi_model:
             return self._analyze_with_phobert(text, language, word_count)
-        elif self.multilingual_analyzer:
+        elif self.xlm_model:
             return self._analyze_with_xlm(text, language, word_count)
         else:
             return self._analyze_rule_based(text, language, word_count)
     
     def _analyze_with_phobert(self, text: str, language: str, word_count: int) -> Dict:
         try:
-            result = self.vi_analyzer(text)[0]
+            # Tokenize
+            encoding = self.vi_tokenizer(
+                text,
+                add_special_tokens=True,
+                max_length=256,
+                padding='max_length',
+                truncation=True,
+                return_attention_mask=True,
+                return_tensors='pt'
+            )
             
-            label_map = {
-                'POS': 'positive',
-                'NEG': 'negative',
-                'NEU': 'neutral',
-                'POSITIVE': 'positive',
-                'NEGATIVE': 'negative',
-                'NEUTRAL': 'neutral'
-            }
+            input_ids = encoding['input_ids'].to(self.device)
+            attention_mask = encoding['attention_mask'].to(self.device)
             
-            sentiment = label_map.get(result['label'].upper(), 'neutral')
+            # Predict
+            with torch.no_grad():
+                outputs = self.vi_model(input_ids=input_ids, attention_mask=attention_mask)
+                probs = torch.softmax(outputs, dim=1)
+                confidence, predicted = torch.max(probs, dim=1)
+            
+            sentiment = self.sentiments[predicted.item()]
             
             return {
                 'sentiment': sentiment,
-                'sentiment_score': float(result['score']),
+                'sentiment_score': float(confidence.item()),
                 'language': language,
                 'analysis_model': 'phobert',
                 'cleaned_content': text,
@@ -263,32 +325,39 @@ class MultilingualSentimentAnalyzer:
     
     def _analyze_with_xlm(self, text: str, language: str, word_count: int) -> Dict:
         try:
-            result = self.multilingual_analyzer(text)[0]
+            # Tokenize
+            encoding = self.xlm_tokenizer(
+                text,
+                add_special_tokens=True,
+                max_length=256,
+                padding='max_length',
+                truncation=True,
+                return_attention_mask=True,
+                return_tensors='pt'
+            )
             
-            label = result['label']
+            input_ids = encoding['input_ids'].to(self.device)
+            attention_mask = encoding['attention_mask'].to(self.device)
             
-            if 'star' in label.lower():
-                stars = int(label.split()[0])
-                if stars >= 4:
-                    sentiment = 'positive'
-                elif stars <= 2:
-                    sentiment = 'negative'
-                else:
-                    sentiment = 'neutral'
-            else:
-                sentiment = result['label'].lower()
+            # Predict
+            with torch.no_grad():
+                outputs = self.xlm_model(input_ids=input_ids, attention_mask=attention_mask)
+                probs = torch.softmax(outputs, dim=1)
+                confidence, predicted = torch.max(probs, dim=1)
+            
+            sentiment = self.sentiments[predicted.item()]
             
             return {
                 'sentiment': sentiment,
-                'sentiment_score': float(result['score']),
+                'sentiment_score': float(confidence.item()),
                 'language': language,
-                'analysis_model': 'mbert',
+                'analysis_model': 'xlm-roberta',
                 'cleaned_content': text,
                 'word_count': word_count
             }
         
         except Exception as e:
-            logger.error(f"Multilingual BERT analysis failed: {e}")
+            logger.error(f"XLM-RoBERTa analysis failed: {e}")
             return self._analyze_rule_based(text, language, word_count)
     
     def _analyze_rule_based(self, text: str, language: str, word_count: int) -> Dict:
@@ -329,87 +398,12 @@ class MultilingualSentimentAnalyzer:
         }
     
     def analyze_batch(self, texts: List[str], batch_size: int = 32) -> List[Dict]:
+        """Batch processing for faster analysis"""
         results = []
         
-        languages = [self.detect_language(text) for text in texts]
+        # For simplicity, use single analysis for now
+        # Can optimize later with true batch processing
+        for text in texts:
+            results.append(self.analyze_sentiment(text))
         
-        vi_indices = [i for i, lang in enumerate(languages) if lang == 'vi']
-        other_indices = [i for i, lang in enumerate(languages) if lang != 'vi']
-        
-        if vi_indices and self.vi_analyzer:
-            vi_texts = [texts[i] for i in vi_indices]
-            vi_cleaned = [self.clean_text(t) for t in vi_texts]
-            
-            try:
-                vi_results = self.vi_analyzer(vi_cleaned, batch_size=batch_size)
-                
-                for i, idx in enumerate(vi_indices):
-                    result = vi_results[i]
-                    label_map = {
-                        'POS': 'positive',
-                        'NEG': 'negative',
-                        'NEU': 'neutral',
-                        'POSITIVE': 'positive',
-                        'NEGATIVE': 'negative',
-                        'NEUTRAL': 'neutral'
-                    }
-                    
-                    results.append({
-                        'index': idx,
-                        'sentiment': label_map.get(result['label'].upper(), 'neutral'),
-                        'sentiment_score': float(result['score']),
-                        'language': 'vi',
-                        'analysis_model': 'phobert',
-                        'cleaned_content': vi_cleaned[i],
-                        'word_count': self.count_words(vi_cleaned[i])
-                    })
-            except Exception as e:
-                logger.error(f"Batch PhoBERT analysis failed: {e}")
-                for idx in vi_indices:
-                    results.append({
-                        'index': idx,
-                        **self.analyze_sentiment(texts[idx], 'vi')
-                    })
-        
-        if other_indices and self.multilingual_analyzer:
-            other_texts = [texts[i] for i in other_indices]
-            other_cleaned = [self.clean_text(t) for t in other_texts]
-            
-            try:
-                other_results = self.multilingual_analyzer(other_cleaned, batch_size=batch_size)
-                
-                for i, idx in enumerate(other_indices):
-                    result = other_results[i]
-                    
-                    label = result['label']
-                    if 'star' in label.lower():
-                        stars = int(label.split()[0])
-                        if stars >= 4:
-                            sentiment = 'positive'
-                        elif stars <= 2:
-                            sentiment = 'negative'
-                        else:
-                            sentiment = 'neutral'
-                    else:
-                        sentiment = result['label'].lower()
-                    
-                    results.append({
-                        'index': idx,
-                        'sentiment': sentiment,
-                        'sentiment_score': float(result['score']),
-                        'language': languages[idx],
-                        'analysis_model': 'mbert',
-                        'cleaned_content': other_cleaned[i],
-                        'word_count': self.count_words(other_cleaned[i])
-                    })
-            except Exception as e:
-                logger.error(f"Batch multilingual BERT analysis failed: {e}")
-                for idx in other_indices:
-                    results.append({
-                        'index': idx,
-                        **self.analyze_sentiment(texts[idx], languages[idx])
-                    })
-        
-        results.sort(key=lambda x: x['index'])
-        
-        return [{k: v for k, v in r.items() if k != 'index'} for r in results]
+        return results

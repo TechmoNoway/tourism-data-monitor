@@ -10,6 +10,7 @@ class TouristAttractionBase(BaseModel):
     tourism_type: Optional[str] = None  # beach, mountain, historical, cultural, nature, urban, adventure
     address: Optional[str] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
 
 class TouristAttractionCreate(TouristAttractionBase):
     province_id: int

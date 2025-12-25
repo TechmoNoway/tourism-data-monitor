@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func, text
 from app.models.province import Province
 from app.models.tourist_attraction import TouristAttraction
 from app.schemas.province import Province as ProvinceSchema, ProvinceWithStats
@@ -9,9 +10,36 @@ from app.schemas.attraction import TouristAttraction as AttractionSchema
 class ProvinceService:
     def __init__(self, db: Session):
         self.db = db
+        self._unaccent_available = None
+    
+    def _check_unaccent_available(self) -> bool:
+        """Check if unaccent extension is available"""
+        if self._unaccent_available is None:
+            try:
+                self.db.execute(text("SELECT unaccent('test');"))
+                self._unaccent_available = True
+            except Exception:
+                # Rollback the failed transaction
+                self.db.rollback()
+                self._unaccent_available = False
+        return self._unaccent_available
     
     def get_all_provinces(self) -> List[ProvinceSchema]:
         provinces = self.db.query(Province).all()
+        return [ProvinceSchema.model_validate(province) for province in provinces]
+    
+    def search_provinces(self, search_term: str) -> List[ProvinceSchema]:
+        """Search provinces by name with support for Vietnamese diacritics"""
+        if self._check_unaccent_available():
+            # Use unaccent extension if available
+            provinces = self.db.query(Province).filter(
+                func.unaccent(Province.name).ilike(func.unaccent(f"%{search_term}%"))
+            ).all()
+        else:
+            # Fallback to regular ilike if unaccent extension is not available
+            provinces = self.db.query(Province).filter(
+                Province.name.ilike(f"%{search_term}%")
+            ).all()
         return [ProvinceSchema.model_validate(province) for province in provinces]
     
     def get_province_by_id(self, province_id: int) -> Optional[ProvinceSchema]:

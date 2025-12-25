@@ -159,13 +159,11 @@ class TikTokApifyCollector(BaseCollector):
             # Much better than the general scraper for comments specifically
             actor_id = "clockworks/tiktok-comments-scraper"
             
-            # Input format for comments scraper - expects video URLs
-            # NOTE: Field name is "postURLs" (capital U) not "postUrls"
             run_input = {
-                "postURLs": [video_url],  # Must be "postURLs" with capital U
-                "maxComments": min(limit, 500),  # Max comments to collect (up to 500)
-                "maxReplies": 10,  # Increased from 5 to 10 replies per comment for better thread context
-                "commentsPerPage": 30,  # How many to load per page
+                "postURLs": [video_url],
+                "maxComments": min(limit, 500),
+                "maxReplies": 10,
+                "commentsPerPage": 30,
             }
             
             self.logger.info("[COLLECT] Collecting comments using specialized Comments Scraper")

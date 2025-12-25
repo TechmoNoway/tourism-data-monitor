@@ -14,6 +14,7 @@ class TouristAttraction(Base):
     address = Column(String(500))
     province_id = Column(Integer, ForeignKey("provinces.id"))
     description = Column(Text)
+    image_url = Column(String(500))  # Main attraction image
     google_place_id = Column(String(200))
     total_reviews = Column(Integer, default=0)  
     total_comments = Column(Integer, default=0)  

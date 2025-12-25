@@ -296,7 +296,7 @@ class TopicClassifier:
     
     def _load_phobert_model(self):
         """Load trained PhoBERT model for Vietnamese"""
-        from training.train_phobert_topic_classifier import PhoBERTTopicClassifier
+        from training.train_phobert_tourism_topic_classifier import PhoBERTTopicClassifier
         from transformers import AutoTokenizer
         
         if self.ml_device is None:
@@ -315,7 +315,7 @@ class TopicClassifier:
     
     def _load_xlm_model(self):
         """Load trained XLM-RoBERTa model for multilingual"""
-        from training.train_xlm_topic_classifier import XLMRoBERTaTopicClassifier
+        from training.train_xlm_tourism_topic_classifier import XLMRoBERTaTopicClassifier
         from transformers import AutoTokenizer
         
         if self.ml_device is None:

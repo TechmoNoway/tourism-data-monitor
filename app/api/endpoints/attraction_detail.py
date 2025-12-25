@@ -62,13 +62,29 @@ async def get_attraction_detail_stats(
         
         if not aspect_comments:
             continue
-            
-        pos = sum(1 for c in aspect_comments if c.aspect_sentiments and 
-                 c.aspect_sentiments.get(aspect) == 'positive')
-        neg = sum(1 for c in aspect_comments if c.aspect_sentiments and 
-                 c.aspect_sentiments.get(aspect) == 'negative')
-        neu = sum(1 for c in aspect_comments if c.aspect_sentiments and 
-                 c.aspect_sentiments.get(aspect) == 'neutral')
+        
+        pos = 0
+        neg = 0
+        neu = 0
+        
+        for c in aspect_comments:
+            # First try to get aspect-specific sentiment
+            if c.aspect_sentiments and aspect in c.aspect_sentiments:
+                aspect_sentiment = c.aspect_sentiments.get(aspect)
+                if aspect_sentiment == 'positive':
+                    pos += 1
+                elif aspect_sentiment == 'negative':
+                    neg += 1
+                elif aspect_sentiment == 'neutral':
+                    neu += 1
+            # Fallback to overall comment sentiment if aspect_sentiments not available
+            elif c.sentiment:
+                if c.sentiment == 'positive':
+                    pos += 1
+                elif c.sentiment == 'negative':
+                    neg += 1
+                elif c.sentiment == 'neutral':
+                    neu += 1
         
         total = len(aspect_comments)
         pos_pct = (pos / total * 100) if total > 0 else 0
@@ -138,7 +154,7 @@ async def get_attraction_detail_stats(
 @router.get("/{attraction_id}/comments-by-aspect")
 async def get_comments_by_aspect(
     attraction_id: int,
-    aspect: str = Query(..., description="Aspect: scenery, activities, food, facilities, accessibility, pricing, service"),
+    aspect: str = Query(None, description="Aspect: scenery, activities, food, facilities, accessibility, pricing, service (optional)"),
     sentiment: str = Query(None, description="Filter by sentiment: positive, negative, neutral (optional)"),
     months: int = Query(6, ge=1, le=24, description="Number of months for statistics"),
     limit: int = Query(50, ge=1, le=200, description="Number of comments to return"),
@@ -146,7 +162,7 @@ async def get_comments_by_aspect(
     db: Session = Depends(get_db)
 ):
     valid_aspects = ['scenery', 'activities', 'food', 'facilities', 'accessibility', 'pricing', 'service']
-    if aspect not in valid_aspects:
+    if aspect and aspect not in valid_aspects:
         raise HTTPException(
             status_code=400, 
             detail=f"Invalid aspect. Must be one of: {', '.join(valid_aspects)}"
@@ -166,12 +182,16 @@ async def get_comments_by_aspect(
             Comment.attraction_id == attraction_id,
             Comment.is_meaningful == True,
             Comment.scraped_at >= start_date,
-            Comment.sentiment.isnot(None),
-            Comment.topics.isnot(None)
+            Comment.sentiment.isnot(None)
         )
     )
     
-    query = query.filter(Comment.topics.contains([aspect]))
+    # Only filter by aspect if provided
+    if aspect:
+        query = query.filter(
+            Comment.topics.isnot(None),
+            Comment.topics.contains([aspect])
+        )
     
     if sentiment:
         query = query.filter(Comment.sentiment == sentiment)

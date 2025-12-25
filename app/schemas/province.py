@@ -7,6 +7,7 @@ class ProvinceBase(BaseModel):
     name: str
     code: str
     main_city: Optional[str] = None
+    image_url: Optional[str] = None
 
 class ProvinceCreate(ProvinceBase):
     pass
