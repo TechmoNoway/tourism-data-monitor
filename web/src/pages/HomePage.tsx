@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import SearchBar from '../components/SearchBar';
+import CollectionTrendsChart from '../components/CollectionTrendsChart';
 import { getProvinces, getAttractions, Province, TouristAttraction } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, TrendingUp, Star } from 'lucide-react';
@@ -91,6 +92,9 @@ const HomePage = () => {
           </div>
         </div>
       </div>
+
+      {/* Collection Trends Chart */}
+      <CollectionTrendsChart period="6months" height={350} />
 
       {/* Provinces Section */}
       <div>

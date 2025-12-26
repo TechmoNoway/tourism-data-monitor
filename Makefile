@@ -1,6 +1,27 @@
+# Environment Setup
+venv:
+	python -m venv .venv
+	@echo "Virtual environment created!"
+	@echo "Activate it with: .venv\Scripts\Activate.ps1"
+
+activate:
+	@echo "To activate virtual environment, run:"
+	@echo "  .venv\Scripts\Activate.ps1"
+	@echo ""
+	@echo "Or use this one-liner:"
+	@echo "  .venv\Scripts\Activate.ps1; python run.py"
+
+install:
+	.venv\Scripts\python.exe -m pip install --upgrade pip
+	.venv\Scripts\pip.exe install -r requirements.txt
+	@echo "Dependencies installed!"
+
 # Server
 run:
 	python run.py
+
+run-venv:
+	.venv\Scripts\python.exe run.py
 
 # Collection Scripts
 collect:
@@ -55,6 +76,18 @@ fetch-images:
 populate-images:
 	python scripts/populate_images.py
 
+fix-images-cloudinary:
+	python scripts/fix_images_cloudinary.py
+
+fix-images-test:
+	python scripts/fix_images_cloudinary.py --test
+
+fix-images-force:
+	python scripts/fix_images_cloudinary.py --force
+
+fix-provinces-images:
+	python scripts/fix_images_cloudinary.py --provinces-only
+
 merge-duplicates:
 	python scripts/merge_duplicate_attractions.py
 
@@ -75,8 +108,14 @@ restore-db:
 help:
 	@echo "Tourism Data Monitor - Makefile Commands"
 	@echo ""
+	@echo "Environment Setup:"
+	@echo "  make venv                - Create virtual environment"
+	@echo "  make activate            - Show activation command"
+	@echo "  make install             - Install dependencies in venv"
+	@echo ""
 	@echo "Server:"
 	@echo "  make run                 - Start FastAPI server"
+	@echo "  make run-venv            - Start server using venv Python"
 	@echo ""
 	@echo "Collection (Quick):"
 	@echo "  make collect             - Weekly update (10 attractions, analyze, report)"
@@ -105,6 +144,10 @@ help:
 	@echo "  make fix-duplicates      - Fix duplicate data"
 	@echo "  make fetch-images        - Fetch images for attractions"
 	@echo "  make populate-images     - Populate missing images"
+	@echo "  make fix-images-cloudinary - Re-upload broken images to Cloudinary"
+	@echo "  make fix-images-test     - Test Cloudinary upload (5 attractions)"
+	@echo "  make fix-images-force    - Re-upload ALL images to Cloudinary"
+	@echo "  make fix-provinces-images - Fix province images only"
 	@echo "  make merge-duplicates    - Merge duplicate attractions"
 	@echo "  make generate-demand     - Generate demand report"
 	@echo ""

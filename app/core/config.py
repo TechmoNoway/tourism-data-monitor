@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Apify (for Facebook, TikTok, and Google Maps scraping)
     APIFY_API_TOKEN: Optional[str] = None
 
+    # Cloudinary (for image storage)
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
+
     # Collection Settings
     DEFAULT_POSTS_LIMIT: int = 50
     DEFAULT_COMMENTS_LIMIT: int = 100

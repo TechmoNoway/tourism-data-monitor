@@ -221,5 +221,5 @@ note
 scripts/clear_database.py
 data
 docs/
-training/
 
+training/models

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import provinces, attractions, collection, aspects, attraction_detail
+from app.api.endpoints import provinces, attractions, collection, aspects, attraction_detail, analytics
 
 router = APIRouter()
 
@@ -8,6 +8,7 @@ router.include_router(attractions.router, prefix="/attractions", tags=["Tourist 
 router.include_router(attraction_detail.router, prefix="/attractions", tags=["Tourist Attractions"])  # Detail stats
 router.include_router(collection.router, tags=["Data Collection"])
 router.include_router(aspects.router, prefix="/analytics/aspects", tags=["Aspect Analysis"])
+router.include_router(analytics.router, tags=["Analytics"])
 
 # Health check endpoint
 @router.get("/health")
