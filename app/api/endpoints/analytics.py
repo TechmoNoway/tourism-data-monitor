@@ -16,16 +16,17 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 async def get_collection_trends(
     attraction_id: Optional[int] = Query(None, description="Filter by attraction ID"),
     province_id: Optional[int] = Query(None, description="Filter by province ID"),
-    period: str = Query("2weeks", description="Time period: 1week, 2weeks, 1month, 3months, 6months, 1year"),
+    period: str = Query("2weeks", description="Time period: 7days, 1week, 2weeks, 1month, 3months, 6months, 1year"),
     db: Session = Depends(get_db)
 ):
     """
     Get collection trends showing comment counts over time
-    Returns data grouped by collection period (every 2 weeks by default)
+    Returns data grouped by collection period (daily for <1month, weekly for >=1month)
     """
     
     # Determine time range
     period_days = {
+        "7days": 7,
         "1week": 7,
         "2weeks": 14,
         "1month": 30,
@@ -37,9 +38,15 @@ async def get_collection_trends(
     days = period_days.get(period, 180)
     start_date = datetime.now() - timedelta(days=days)
     
+    # Use daily grouping for periods < 1 month, weekly for longer periods
+    if days <= 30:
+        grouping = 'day'
+    else:
+        grouping = 'week'
+    
     # Build query
     query = db.query(
-        func.date_trunc('week', Comment.scraped_at).label('collection_week'),
+        func.date_trunc(grouping, Comment.scraped_at).label('collection_period'),
         func.count(Comment.id).label('comment_count'),
         func.count(func.distinct(Comment.attraction_id)).label('attraction_count')
     ).filter(
@@ -58,13 +65,13 @@ async def get_collection_trends(
         )
     
     # Group by week
-    results = query.group_by('collection_week').order_by('collection_week').all()
+    results = query.group_by('collection_period').order_by('collection_period').all()
     
     # Format response
     trends = []
     for row in results:
         trends.append({
-            "date": row.collection_week.strftime("%Y-%m-%d") if row.collection_week else None,
+            "date": row.collection_period.strftime("%Y-%m-%d") if row.collection_period else None,
             "comment_count": row.comment_count,
             "attraction_count": row.attraction_count
         })

@@ -17,7 +17,10 @@ class TouristAttraction(Base):
     image_url = Column(String(500))  # Main attraction image
     google_place_id = Column(String(200))
     total_reviews = Column(Integer, default=0)  
-    total_comments = Column(Integer, default=0)  
+    total_comments = Column(Integer, default=0)
+    positive_count = Column(Integer, default=0)  # Count of positive sentiment comments
+    negative_count = Column(Integer, default=0)  # Count of negative sentiment comments
+    neutral_count = Column(Integer, default=0)   # Count of neutral sentiment comments
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))

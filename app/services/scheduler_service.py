@@ -35,9 +35,9 @@ class SchedulerService:
             logger.info(f"Job {event.job_id} completed successfully")
     
     async def _weekly_collection(self):
-        """Weekly data collection task"""
+        """Demo collection task - collects 3-5 comments per attraction"""
         logger.info("="*70)
-        logger.info("WEEKLY DATA COLLECTION STARTED")
+        logger.info("DEMO DATA COLLECTION STARTED (5-min interval)")
         logger.info("="*70)
         
         try:
@@ -46,26 +46,30 @@ class SchedulerService:
             import sys
             from pathlib import Path
             
-            script_path = Path(__file__).parent.parent.parent / "scripts" / "collect_data.py"
+            script_path = Path(__file__).parent.parent.parent / "scripts" / "collect_data_comprehensive.py"
             
+            # Run with demo mode: limit comments to 3-5 per attraction
             result = subprocess.run(
-                [sys.executable, str(script_path), "--all"],
+                [sys.executable, str(script_path), 
+                 "--mode", "demo",
+                 "--comments-limit", "5",
+                 "--platforms", "youtube"],  # Only YouTube for fast demo
                 capture_output=True,
                 text=True,
-                timeout=3600  # 1 hour timeout
+                timeout=300  # 5 minutes timeout
             )
             
             if result.returncode == 0:
-                logger.info("[SUCCESS] Weekly collection completed")
+                logger.info("[SUCCESS] Demo collection completed")
                 logger.info(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
             else:
-                logger.error(f"[FAILED] Weekly collection failed with code {result.returncode}")
+                logger.error(f"[FAILED] Demo collection failed with code {result.returncode}")
                 logger.error(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
                 
         except subprocess.TimeoutExpired:
-            logger.error("[FAILED] Weekly collection timeout (>1 hour)")
+            logger.error("[FAILED] Demo collection timeout (>5 min)")
         except Exception as e:
-            logger.error(f"[FAILED] Weekly collection error: {str(e)}")
+            logger.error(f"[FAILED] Demo collection error: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
     
@@ -128,21 +132,23 @@ class SchedulerService:
         
         self.scheduler.add_job(
             self._weekly_collection,
-            CronTrigger(day_of_week='sun', hour=2, minute=0),
-            id='weekly_collection',
-            name='Weekly Data Collection',
+            'interval',
+            minutes=5,
+            id='demo_collection',
+            name='Demo Data Collection (Every 5 minutes)',
             replace_existing=True
         )
-        logger.info("[OK] Scheduled: Weekly collection (Every Sunday 2:00 AM)")
+        logger.info("[OK] Scheduled: Demo collection (Every 5 minutes)")
         
-        self.scheduler.add_job(
-            self._monthly_discovery,
-            CronTrigger(day_of_week='sun', hour=1, minute=0),
-            id='monthly_discovery',
-            name='Monthly Auto-Discovery',
-            replace_existing=True
-        )
-        logger.info("[OK] Scheduled: Monthly discovery (First Sunday 1:00 AM)")
+        # Monthly discovery disabled for demo mode
+        # self.scheduler.add_job(
+        #     self._monthly_discovery,
+        #     CronTrigger(day_of_week='sun', hour=1, minute=0),
+        #     id='monthly_discovery',
+        #     name='Monthly Auto-Discovery',
+        #     replace_existing=True
+        # )
+        # logger.info("[OK] Scheduled: Monthly discovery (First Sunday 1:00 AM)")
         
         self.scheduler.start()
         self.is_running = True

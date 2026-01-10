@@ -1,10 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import logging
+from datetime import datetime, timezone
+from sqlalchemy import func
 
 from app.database.connection import get_db
 from app.models.social_post import SocialPost
 from app.models.comment import Comment
+from app.models.tourist_attraction import TouristAttraction
 from app.models.analysis_log import AnalysisLog
 from app.schemas.post import SocialPostCreate
 from app.schemas.comment import CommentCreate
@@ -200,6 +203,9 @@ class BaseCollector(ABC):
                 sentiment = 'neutral'
                 sentiment_score = 0.0
                 topics = []
+                analysis_model = None
+                language = 'vi'
+                cleaned_content = text
                 
                 if quality_tier in ['high', 'medium', 'low']:
                     try:
@@ -207,9 +213,12 @@ class BaseCollector(ABC):
                         sentiment_result = self.sentiment_analyzer.analyze_sentiment(text)
                         sentiment = sentiment_result['sentiment']
                         sentiment_score = sentiment_result['confidence']
+                        analysis_model = sentiment_result.get('analysis_model', 'unknown')
+                        language = sentiment_result.get('language', 'vi')
+                        cleaned_content = sentiment_result.get('cleaned_content', text)
                         
                         # Topic classification
-                        topics = self.topic_classifier.classify(text)
+                        topics = self.topic_classifier.classify_topics(text, language)
                         
                     except Exception as e:
                         self.logger.warning(f"Analysis failed for comment: {str(e)}")
@@ -226,6 +235,10 @@ class BaseCollector(ABC):
                 comment_data_dict['sentiment'] = sentiment
                 comment_data_dict['sentiment_score'] = sentiment_score
                 comment_data_dict['topics'] = topics
+                comment_data_dict['analysis_model'] = analysis_model
+                comment_data_dict['analyzed_at'] = datetime.now(timezone.utc) if sentiment != 'neutral' else None
+                comment_data_dict['language'] = language
+                comment_data_dict['cleaned_content'] = cleaned_content
 
                 existing_comment = (
                     db.query(Comment)
@@ -274,6 +287,10 @@ class BaseCollector(ABC):
                 )
 
             db.commit()
+            
+            # Update attraction sentiment counts
+            if attraction_id:
+                self._update_attraction_sentiment_counts(db, attraction_id)
             
             # Log quality distribution
             total = len(raw_comments)
@@ -383,3 +400,47 @@ class BaseCollector(ABC):
         cleaned = " ".join(text.split())
         
         return cleaned
+
+    def _update_attraction_sentiment_counts(self, db, attraction_id: int):
+        """
+        Update sentiment counts for an attraction based on its comments.
+        
+        Args:
+            db: Database session
+            attraction_id: ID of the attraction to update
+        """
+        try:
+            # Count comments by sentiment
+            positive_count = db.query(func.count(Comment.id)).filter(
+                Comment.attraction_id == attraction_id,
+                Comment.sentiment == 'positive'
+            ).scalar() or 0
+            
+            negative_count = db.query(func.count(Comment.id)).filter(
+                Comment.attraction_id == attraction_id,
+                Comment.sentiment == 'negative'
+            ).scalar() or 0
+            
+            neutral_count = db.query(func.count(Comment.id)).filter(
+                Comment.attraction_id == attraction_id,
+                Comment.sentiment == 'neutral'
+            ).scalar() or 0
+            
+            # Update attraction
+            attraction = db.query(TouristAttraction).filter(
+                TouristAttraction.id == attraction_id
+            ).first()
+            
+            if attraction:
+                attraction.positive_count = positive_count
+                attraction.negative_count = negative_count
+                attraction.neutral_count = neutral_count
+                db.commit()
+                
+                self.logger.info(
+                    f"Updated sentiment counts for attraction {attraction_id}: "
+                    f"{positive_count} positive, {negative_count} negative, {neutral_count} neutral"
+                )
+        except Exception as e:
+            self.logger.error(f"Error updating sentiment counts: {str(e)}")
+            db.rollback()

@@ -64,11 +64,11 @@ const AttractionCard = ({ attraction }: AttractionCardProps) => {
             </div>
             <div className="flex items-center text-green-600">
               <ThumbsUp className="w-4 h-4 mr-1" />
-              <span className="text-sm font-medium">{Math.round(sentimentPercentage.positive)}%</span>
+              <span className="text-sm font-medium">{positiveCount}</span>
             </div>
             <div className="flex items-center text-red-600">
               <ThumbsDown className="w-4 h-4 mr-1" />
-              <span className="text-sm font-medium">{Math.round(sentimentPercentage.negative)}%</span>
+              <span className="text-sm font-medium">{negativeCount}</span>
             </div>
           </div>
         </div>

@@ -30,6 +30,9 @@ class TouristAttraction(TouristAttractionBase):
     google_place_id: Optional[str] = None
     total_reviews: int  # From Google Maps/external sources
     total_comments: int  # From social platforms
+    positive_count: int = 0  # Count of positive sentiment comments
+    negative_count: int = 0  # Count of negative sentiment comments
+    neutral_count: int = 0   # Count of neutral sentiment comments
     is_active: bool
     created_at: datetime
     updated_at: datetime

@@ -7,6 +7,7 @@ import {
   TouristAttraction,
 } from '../services/api';
 import AttractionCard from '../components/AttractionCard';
+import CollectionTrendsChart from '../components/CollectionTrendsChart';
 import { Search, Filter, ThumbsUp, ThumbsDown, TrendingUp, MapPin, ArrowLeft } from 'lucide-react';
 
 type FilterType = 'all' | 'positive' | 'negative' | 'trending';
@@ -135,6 +136,9 @@ const ProvincePage = () => {
           </div>
         </div>
       </div>
+
+      {/* Collection Trends Chart */}
+      <CollectionTrendsChart provinceId={Number(provinceId)} period="6months" height={350} />
 
       {/* Search and Filter Section */}
       <div className="bg-white rounded-lg shadow-md p-6">

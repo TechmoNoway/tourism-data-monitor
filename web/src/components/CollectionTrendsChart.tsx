@@ -40,7 +40,7 @@ interface CollectionTrendsResponse {
 interface CollectionTrendsChartProps {
   attractionId?: number;
   provinceId?: number;
-  period?: '1week' | '2weeks' | '1month' | '3months' | '6months' | '1year';
+  period?: '7days' | '1week' | '2weeks' | '1month' | '3months' | '6months' | '1year';
   height?: number;
 }
 
@@ -135,6 +135,8 @@ const CollectionTrendsChart = ({
   }
 
   const periods = [
+    { value: '7days', label: '7 Days' },
+    { value: '1week', label: '1 Week' },
     { value: '1month', label: '1 Month' },
     { value: '3months', label: '3 Months' },
     { value: '6months', label: '6 Months' },
