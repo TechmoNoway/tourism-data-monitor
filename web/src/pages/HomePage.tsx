@@ -1,13 +1,26 @@
 import { useState, useEffect } from 'react';
 import SearchBar from '../components/SearchBar';
 import CollectionTrendsChart from '../components/CollectionTrendsChart';
-import { getProvinces, getAttractions, Province, TouristAttraction } from '../services/api';
+import TopAttractionsList from '../components/TopAttractionsList';
+import {
+  getProvinces,
+  getAttractions,
+  getTopAttractionsByDemand,
+  getTopProvincesByDemand,
+  Province,
+  TouristAttraction,
+  TopAttraction,
+  TopProvince,
+} from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, TrendingUp, Star } from 'lucide-react';
 
 const HomePage = () => {
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [topAttractions, setTopAttractions] = useState<TouristAttraction[]>([]);
+  const [topDemandAttractions, setTopDemandAttractions] = useState<TopAttraction[]>([]);
+  const [topDemandProvinces, setTopDemandProvinces] = useState<TopProvince[]>([]);
+  const [demandPeriod, setDemandPeriod] = useState<string>('month');
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -29,6 +42,25 @@ const HomePage = () => {
 
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const fetchDemandData = async () => {
+      try {
+        const [attractionsData, provincesData] = await Promise.all([
+          getTopAttractionsByDemand({ period: demandPeriod, limit: 10 }),
+          getTopProvincesByDemand({ period: demandPeriod, limit: 10 }),
+        ]);
+        setTopDemandAttractions(attractionsData || []);
+        setTopDemandProvinces(provincesData || []);
+      } catch (error) {
+        console.error('Error fetching demand data:', error);
+        setTopDemandAttractions([]);
+        setTopDemandProvinces([]);
+      }
+    };
+
+    fetchDemandData();
+  }, [demandPeriod]);
 
   if (isLoading) {
     return (
@@ -95,6 +127,22 @@ const HomePage = () => {
 
       {/* Collection Trends Chart */}
       <CollectionTrendsChart period="6months" height={350} />
+
+      {/* Tourism Demand Analysis Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TopAttractionsList
+          type="attractions"
+          items={topDemandAttractions}
+          period={demandPeriod}
+          onPeriodChange={setDemandPeriod}
+        />
+        <TopAttractionsList
+          type="provinces"
+          items={topDemandProvinces}
+          period={demandPeriod}
+          onPeriodChange={setDemandPeriod}
+        />
+      </div>
 
       {/* Provinces Section */}
       <div>

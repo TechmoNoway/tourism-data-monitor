@@ -1,4 +1,4 @@
-"""
+﻿"""
 Comprehensive Tourism Data Collection Script
 ============================================
 
@@ -46,10 +46,16 @@ Usage:
 
 import asyncio
 import sys
+import io
 from pathlib import Path
 from typing import List, Optional
 import argparse
 from datetime import datetime
+
+# Fix Windows console encoding for Vietnamese characters
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -85,12 +91,12 @@ class ComprehensiveCollector:
             self.target_posts = settings.FULL_TARGET_POSTS
             self.target_comments = settings.FULL_TARGET_COMMENTS
             self.platform_limits = settings.FULL_PLATFORM_LIMITS
-            logger.info("🚀 FULL COLLECTION MODE - High volume data collection")
+            logger.info("[START] FULL COLLECTION MODE - High volume data collection")
         else:
             self.target_posts = settings.TARGET_POSTS_PER_ATTRACTION
             self.target_comments = settings.TARGET_COMMENTS_PER_ATTRACTION
             self.platform_limits = settings.PLATFORM_LIMITS
-            logger.info("📊 DEMO/WEEKLY UPDATE MODE - Cost-efficient incremental updates")
+            logger.info("[STATS] DEMO/WEEKLY UPDATE MODE - Cost-efficient incremental updates")
         
         self.max_attractions_per_province = settings.MAX_ATTRACTIONS_PER_PROVINCE
         
@@ -107,8 +113,12 @@ class ComprehensiveCollector:
         """Lazy initialization of collection pipeline"""
         if not self.pipeline:
             from app.collectors.smart_collection_pipeline import create_smart_pipeline
-            self.pipeline = create_smart_pipeline()
-            logger.info("✅ Collection pipeline initialized")
+            self.pipeline = create_smart_pipeline(
+                youtube_api_key=settings.YOUTUBE_API_KEY,
+                apify_api_token=settings.APIFY_API_TOKEN,
+                use_gpu=self.use_gpu
+            )
+            logger.info("[OK] Collection pipeline initialized")
     
     def _initialize_analysis(self):
         """Lazy initialization of analysis services"""
@@ -117,11 +127,11 @@ class ComprehensiveCollector:
                 use_gpu=self.use_gpu,
                 batch_size=self.batch_size
             )
-            logger.info(f"✅ Analysis service initialized (GPU: {self.use_gpu})")
+            logger.info(f"[OK] Analysis service initialized (GPU: {self.use_gpu})")
         
         if not self.topic_classifier:
             self.topic_classifier = TopicClassifier()
-            logger.info("✅ Topic classifier initialized")
+            logger.info("[OK] Topic classifier initialized")
     
     async def auto_discover_attractions(
         self,
@@ -134,7 +144,7 @@ class ComprehensiveCollector:
         """Auto-discover new attractions using Google Maps"""
         
         print("\n" + "="*80)
-        print("🔍 AUTO-DISCOVERY MODE")
+        print("[SEARCH] AUTO-DISCOVERY MODE")
         print("="*80)
         print(f"Province: {province_name}")
         if city_name:
@@ -156,7 +166,7 @@ class ComprehensiveCollector:
             print("❌ No attractions discovered")
             return {'discovered': 0, 'saved': 0}
         
-        print(f"\n✅ Discovered {len(attractions)} attractions")
+        print(f"\n[OK] Discovered {len(attractions)} attractions")
         
         if dry_run:
             print("\n📋 PREVIEW (not saving to database):")
@@ -186,7 +196,7 @@ class ComprehensiveCollector:
                 )
                 db.add(province)
                 db.commit()
-                print(f"\n✅ Created province: {province_name} ({province_code})")
+                print(f"\n[OK] Created province: {province_name} ({province_code})")
             
             province_id = province.id
             
@@ -220,7 +230,7 @@ class ComprehensiveCollector:
                 saved_count += 1
             
             db.commit()
-            print(f"\n✅ Saved {saved_count} new attractions to database")
+            print(f"\n[OK] Saved {saved_count} new attractions to database")
             
         except Exception as e:
             db.rollback()
@@ -241,7 +251,7 @@ class ComprehensiveCollector:
         self._initialize_pipeline()
         
         print("\n" + "="*80)
-        print("📊 MULTI-PLATFORM DATA COLLECTION")
+        print("[STATS] MULTI-PLATFORM DATA COLLECTION")
         print("="*80)
         
         db = next(get_db())
@@ -287,7 +297,7 @@ class ComprehensiveCollector:
                 # Collect for province
                 result = await self.pipeline.collect_for_province(
                     province_id=province.id,
-                    limit=limit
+                    max_attractions=limit
                 )
                 
                 total_stats['attractions'] += result.get('attractions_processed', 0)
@@ -314,7 +324,7 @@ class ComprehensiveCollector:
         self._initialize_analysis()
         
         print("\n" + "="*80)
-        print("🧠 COMPREHENSIVE COMMENT ANALYSIS")
+        print("[ANALYSIS] COMPREHENSIVE COMMENT ANALYSIS")
         print("="*80)
         print(f"Mode: {'Re-analyze ALL' if force_reanalyze else 'Only unanalyzed'}")
         if limit:
@@ -334,7 +344,7 @@ class ComprehensiveCollector:
         """Classify tourism types for all attractions"""
         
         print("\n" + "="*80)
-        print("🏷️  TOURISM TYPE CLASSIFICATION")
+        print("[CLASSIFY]  TOURISM TYPE CLASSIFICATION")
         print("="*80 + "\n")
         
         db = SessionLocal()
@@ -378,7 +388,7 @@ class ComprehensiveCollector:
             
             db.commit()
             
-            print("✅ Classification complete\n")
+            print("[OK] Classification complete\n")
             print("Results:")
             for t_type, count in sorted(stats.items(), key=lambda x: x[1], reverse=True):
                 if count > 0:
@@ -393,7 +403,7 @@ class ComprehensiveCollector:
         """Generate comprehensive database report"""
         
         print("\n" + "="*80)
-        print("📈 DATABASE STATISTICS REPORT")
+        print("[REPORT] DATABASE STATISTICS REPORT")
         print("="*80 + "\n")
         
         db = SessionLocal()
@@ -641,7 +651,7 @@ Examples:
         # Complete workflow
         if args.complete:
             print("\n" + "="*80)
-            print("🚀 COMPLETE WORKFLOW MODE")
+            print("[START] COMPLETE WORKFLOW MODE")
             print("="*80 + "\n")
             
             # 1. Auto-discover (if provinces specified)
@@ -715,7 +725,7 @@ Examples:
                 collector.generate_report()
     
     except KeyboardInterrupt:
-        print("\n\n⚠️  Collection interrupted by user")
+        print("\n\n[!] Collection interrupted by user")
     except Exception as e:
         logger.error(f"Error during execution: {e}", exc_info=True)
     finally:
@@ -723,9 +733,10 @@ Examples:
         duration = end_time - start_time
         
         print("\n" + "="*80)
-        print(f"⏱️  Total execution time: {duration}")
+        print(f"[TIME] Total execution time: {duration}")
         print("="*80 + "\n")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

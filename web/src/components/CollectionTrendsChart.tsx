@@ -57,6 +57,13 @@ const CollectionTrendsChart = ({
 
   useEffect(() => {
     fetchTrends();
+    
+    // Auto-refresh every 30 seconds to show new collected data
+    const intervalId = setInterval(() => {
+      fetchTrends();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(intervalId);
   }, [attractionId, provinceId, selectedPeriod]);
 
   const fetchTrends = async () => {

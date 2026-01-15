@@ -3,11 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getProvinceById,
   getAttractions,
+  getProvinceDemandIndex,
+  getTopAttractionsByDemand,
   Province,
   TouristAttraction,
+  ProvinceDemandIndex,
+  TopAttraction,
 } from '../services/api';
 import AttractionCard from '../components/AttractionCard';
 import CollectionTrendsChart from '../components/CollectionTrendsChart';
+import DemandIndexCard from '../components/DemandIndexCard';
+import TopAttractionsList from '../components/TopAttractionsList';
 import { Search, Filter, ThumbsUp, ThumbsDown, TrendingUp, MapPin, ArrowLeft } from 'lucide-react';
 
 type FilterType = 'all' | 'positive' | 'negative' | 'trending';
@@ -18,6 +24,9 @@ const ProvincePage = () => {
   const [province, setProvince] = useState<Province | null>(null);
   const [attractions, setAttractions] = useState<TouristAttraction[]>([]);
   const [filteredAttractions, setFilteredAttractions] = useState<TouristAttraction[]>([]);
+  const [provinceDemandIndex, setProvinceDemandIndex] = useState<ProvinceDemandIndex | null>(null);
+  const [topDemandAttractions, setTopDemandAttractions] = useState<TopAttraction[]>([]);
+  const [demandPeriod, setDemandPeriod] = useState<string>('month');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +52,31 @@ const ProvincePage = () => {
 
     fetchData();
   }, [provinceId]);
+
+  useEffect(() => {
+    const fetchDemandData = async () => {
+      if (!provinceId) return;
+
+      try {
+        const [provinceDemand, topAttractions] = await Promise.all([
+          getProvinceDemandIndex(Number(provinceId), demandPeriod),
+          getTopAttractionsByDemand({
+            period: demandPeriod,
+            province_id: Number(provinceId),
+            limit: 10,
+          }),
+        ]);
+        setProvinceDemandIndex(provinceDemand);
+        setTopDemandAttractions(topAttractions || []);
+      } catch (error) {
+        console.error('Error fetching demand data:', error);
+        setProvinceDemandIndex(null);
+        setTopDemandAttractions([]);
+      }
+    };
+
+    fetchDemandData();
+  }, [provinceId, demandPeriod]);
 
   useEffect(() => {
     let filtered = [...attractions];
@@ -139,6 +173,21 @@ const ProvincePage = () => {
 
       {/* Collection Trends Chart */}
       <CollectionTrendsChart provinceId={Number(provinceId)} period="6months" height={350} />
+
+      {/* Demand Index Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {provinceDemandIndex && (
+          <DemandIndexCard demandIndex={provinceDemandIndex} type="province" />
+        )}
+        {topDemandAttractions.length > 0 && (
+          <TopAttractionsList
+            type="attractions"
+            items={topDemandAttractions}
+            period={demandPeriod}
+            onPeriodChange={setDemandPeriod}
+          />
+        )}
+      </div>
 
       {/* Search and Filter Section */}
       <div className="bg-white rounded-lg shadow-md p-6">

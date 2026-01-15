@@ -28,3 +28,4 @@ class TouristAttraction(Base):
     province = relationship("Province", back_populates="attractions")
     posts = relationship("SocialPost", back_populates="attraction")
     comments = relationship("Comment", back_populates="attraction")
+    demand_indexes = relationship("DemandIndex", back_populates="attraction")

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Application
     PROJECT_NAME: str = "Tourism Data Monitor API"
     VERSION: str = "1.0.0"
-    API_V1_STR: str = "/api/v1"
+    API_V1_STR: str = "/api"
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8080

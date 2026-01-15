@@ -1,5 +1,6 @@
 import platform
 import logging
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -35,9 +36,9 @@ class SchedulerService:
             logger.info(f"Job {event.job_id} completed successfully")
     
     async def _weekly_collection(self):
-        """Demo collection task - collects 3-5 comments per attraction"""
+        """Hourly collection task - collects from all attractions"""
         logger.info("="*70)
-        logger.info("DEMO DATA COLLECTION STARTED (5-min interval)")
+        logger.info("HOURLY DATA COLLECTION STARTED (All attractions)")
         logger.info("="*70)
         
         try:
@@ -48,28 +49,28 @@ class SchedulerService:
             
             script_path = Path(__file__).parent.parent.parent / "scripts" / "collect_data_comprehensive.py"
             
-            # Run with demo mode: limit comments to 3-5 per attraction
+            # Run collection for ALL attractions (batch processing handled by script)
             result = subprocess.run(
                 [sys.executable, str(script_path), 
-                 "--mode", "demo",
-                 "--comments-limit", "5",
-                 "--platforms", "youtube"],  # Only YouTube for fast demo
+                 "--all"],  # Process all attractions
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minutes timeout
+                encoding='utf-8',  # Force UTF-8 encoding for Vietnamese text
+                errors='replace',  # Replace any problematic characters
+                timeout=1800  # 30 minutes timeout for full collection
             )
             
             if result.returncode == 0:
-                logger.info("[SUCCESS] Demo collection completed")
+                logger.info("[SUCCESS] Hourly collection completed")
                 logger.info(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
             else:
-                logger.error(f"[FAILED] Demo collection failed with code {result.returncode}")
+                logger.error(f"[FAILED] Hourly collection failed with code {result.returncode}")
                 logger.error(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
                 
         except subprocess.TimeoutExpired:
-            logger.error("[FAILED] Demo collection timeout (>5 min)")
+            logger.error("[FAILED] Demo collection timeout (>30 min)")
         except Exception as e:
-            logger.error(f"[FAILED] Demo collection error: {str(e)}")
+            logger.error(f"[FAILED] Hourly collection error: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
     
@@ -130,15 +131,17 @@ class SchedulerService:
             EVENT_JOB_EXECUTED | EVENT_JOB_ERROR
         )
         
+        # Schedule collection to run immediately on startup, then every 1 hour
         self.scheduler.add_job(
             self._weekly_collection,
             'interval',
-            minutes=5,
-            id='demo_collection',
-            name='Demo Data Collection (Every 5 minutes)',
-            replace_existing=True
+            hours=1,
+            id='hourly_collection',
+            name='Hourly Data Collection (All attractions)',
+            replace_existing=True,
+            next_run_time=datetime.now()  # Run immediately on startup
         )
-        logger.info("[OK] Scheduled: Demo collection (Every 5 minutes)")
+        logger.info("[OK] Scheduled: Hourly collection (Immediate first run, then every 1 hour)")
         
         # Monthly discovery disabled for demo mode
         # self.scheduler.add_job(

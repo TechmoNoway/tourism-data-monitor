@@ -3,9 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getAttractionStats,
   getCommentsByAspect,
+  getAttractionDemandAnalytics,
+  getAttractionDemandComparison,
   AttractionDetailStats,
   Comment,
+  DemandAnalytics,
+  ComparativeAnalysis,
 } from '../services/api';
+import DemandIndexCard from '../components/DemandIndexCard';
+import DemandTrendChart from '../components/DemandTrendChart';
 import {
   MapPin,
   MessageSquare,
@@ -20,6 +26,9 @@ const AttractionPage = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<AttractionDetailStats | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [demandAnalytics, setDemandAnalytics] = useState<DemandAnalytics | null>(null);
+  const [demandComparison, setDemandComparison] = useState<ComparativeAnalysis | null>(null);
+  const [demandPeriod, setDemandPeriod] = useState<string>('month');
   const [activeAspect, setActiveAspect] = useState<string>('all');
   const [activeSentiment, setActiveSentiment] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +56,30 @@ const AttractionPage = () => {
 
     fetchData();
   }, [attractionId]);
+
+  useEffect(() => {
+    const fetchDemandData = async () => {
+      if (!attractionId) return;
+
+      try {
+        const [analytics, comparison] = await Promise.all([
+          getAttractionDemandAnalytics(Number(attractionId), {
+            period: demandPeriod,
+            num_periods: 6,
+          }),
+          getAttractionDemandComparison(Number(attractionId), demandPeriod),
+        ]);
+        setDemandAnalytics(analytics);
+        setDemandComparison(comparison);
+      } catch (error) {
+        console.error('Error fetching demand data:', error);
+        setDemandAnalytics(null);
+        setDemandComparison(null);
+      }
+    };
+
+    fetchDemandData();
+  }, [attractionId, demandPeriod]);
 
   // Load comments when aspect or sentiment changes
   useEffect(() => {
@@ -219,6 +252,51 @@ const AttractionPage = () => {
           </p>
         </div>
       </div>
+
+      {/* Demand Index and Trend Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {demandAnalytics && (
+          <>
+            <DemandIndexCard demandIndex={demandAnalytics.demand_index} type="attraction" />
+            <div className="lg:col-span-2">
+              <DemandTrendChart trendData={demandAnalytics.trend} period={demandPeriod} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Comparative Analysis */}
+      {demandComparison && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">So Sánh Nhu Cầu</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">
+                {demandComparison.demand_index.overall_index.toFixed(1)}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Điểm Hiện Tại</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {demandComparison.province_average.toFixed(1)}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Trung Bình Tỉnh</div>
+              <div className={`text-xs mt-1 ${demandComparison.vs_province_avg >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {demandComparison.vs_province_avg > 0 ? '+' : ''}{demandComparison.vs_province_avg.toFixed(1)}%
+              </div>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">
+                {demandComparison.national_average.toFixed(1)}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Trung Bình Quốc Gia</div>
+              <div className={`text-xs mt-1 ${demandComparison.vs_national_avg >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {demandComparison.vs_national_avg > 0 ? '+' : ''}{demandComparison.vs_national_avg.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Aspects Overview */}
       {aspects.length > 0 && (
